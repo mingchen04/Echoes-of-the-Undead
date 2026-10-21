@@ -1,0 +1,21 @@
+# 运行时日志
+.server.log
+.server.err.log
+*.log
+
+# 游戏存档（本地个人数据，不纳入版本库）
+存档/
+
+# 打包备份
+丧尸测试.zip
+*.zip
+
+# 开发验证脚本与截图
+.verify/
+
+# 依赖
+node_modules/
+
+# 临时文件
+.check.js
+*.tmp
