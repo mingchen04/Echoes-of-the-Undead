@@ -181,6 +181,8 @@
   }
   .tag.ghost { color: var(--dim); background: var(--panel-2); border-color: var(--line); }
   .game-blurb { margin: 0; font-size: 12px; line-height: 1.7; color: var(--dim); }
+  .game-blurb .blurb-line { display: block; }
+  .game-blurb .blurb-line + .blurb-line { margin-top: 2px; }
   .side-actions { padding: 14px 16px 6px; display: flex; flex-direction: column; gap: 9px; }
   .side-btn {
     display: flex; align-items: center; gap: 10px;
@@ -1767,7 +1769,7 @@
             <span class="tag">资源管理</span>
             <span class="tag ghost">可大幅改动</span>
           </div>
-          <p class="game-blurb">第 1 天。城市还在运转，新闻里开始出现解释不清的东西。选择出身，决定你从哪里醒来，然后撑过接下来的三天。</p>
+          <p class="game-blurb" id="game-blurb">第 1 天。城市还在运转，新闻里开始出现解释不清的东西。选择出身，决定你从哪里醒来，然后撑过接下来的三天。</p>
         </div>
         <div class="side-actions">
           <button class="side-btn primary" id="btn-new">
@@ -3880,6 +3882,30 @@ function renderScene() {
   const identityBits = [state.player.name || '幸存者', state.player.gender || '未指定'];
   if (state.player.personality) identityBits.push(state.player.personality);
   $('game-identity').textContent = identityBits.join(' · ');
+  renderGameBlurb();
+}
+
+// 左栏简介：开局前是引导文案，开局后随天数/时间/时段/场景/世界阶段变化
+function renderGameBlurb() {
+  const el = $('game-blurb');
+  if (!el) return;
+  if (!state.player || !state.player.origin) {
+    el.textContent = '第 1 天。城市还在运转，新闻里开始出现解释不清的东西。选择出身，决定你从哪里醒来，然后撑过接下来的三天。';
+    el.title = '';
+    return;
+  }
+  const day = state.meta.day || 1;
+  const clock = currentClock();
+  const light = getLightInfo(clock);
+  const stage = state.world.stage || {};
+  const lines = [
+    `第 ${day} 天 ${formatClock(clock)} · ${light.label}`,
+    `${(state.scene && state.scene.name) || '未知地点'} · ${outbreakStatusAt(clock)}`
+  ];
+  const society = String(stage.society || '').trim();
+  if (society) lines.push(`局势：${society.length > 48 ? society.slice(0, 48) + '…' : society}`);
+  el.innerHTML = lines.map(line => `<span class="blurb-line">${esc(line)}</span>`).join('');
+  el.title = [stage.environment, stage.supplies, stage.society].filter(Boolean).join('\n');
 }
 
 function renderWorld() {
