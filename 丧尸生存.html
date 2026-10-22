@@ -3589,6 +3589,7 @@ function normalizeState(s) {
       summary: typeof t.summary === 'string' ? t.summary : '',
       narration: t.narration || '',
       acquired: t.acquired && typeof t.acquired === 'object' ? t.acquired : null,
+      lost: t.lost && typeof t.lost === 'object' ? t.lost : null,
       dialogue: Array.isArray(t.dialogue) ? t.dialogue : [],
       blocks: Array.isArray(t.blocks) && t.blocks.length ? t.blocks : blocksFrom(t.narration, t.dialogue),
       choices: Array.isArray(t.choices) ? t.choices.map(normalizeChoice) : [],
@@ -4547,11 +4548,32 @@ function acquiredItemsText(a) {
   return parts.slice(0, 8).join('、') + (parts.length > 8 ? ` 等${parts.length}项` : '');
 }
 
+function lostItemsText(list) {
+  const arr = (Array.isArray(list) ? list : []).filter(x => x && x.name);
+  if (!arr.length) return '';
+  const map = new Map();
+  arr.forEach(x => {
+    const name = String(x.name).trim();
+    if (!name) return;
+    const qty = Number(x.qty) || 1;
+    map.set(name, (map.get(name) || 0) + qty);
+  });
+  const parts = [];
+  map.forEach((qty, name) => parts.push(qty > 1 ? `${name} ×${qty}` : name));
+  return parts.slice(0, 8).join('、') + (parts.length > 8 ? ` 等${parts.length}项` : '');
+}
+
 function renderTurnSummary(t) {
   if (!t || t.intro) return '';
   const hasAcquired = !!(t.acquired && typeof t.acquired === 'object' && !Array.isArray(t.acquired));
+  const lost = t.lost && typeof t.lost === 'object' && !Array.isArray(t.lost) ? t.lost : null;
+  const hasLost = !!(lost && (
+    (Array.isArray(lost.items) && lost.items.length) ||
+    (Array.isArray(lost.equipment) && lost.equipment.length) ||
+    Number(lost.money) > 0
+  ));
   const summary = (t.summary || makeNarrationSummary(t.narration) || '').trim();
-  if (!summary && !hasAcquired) return '';
+  if (!summary && !hasAcquired && !hasLost) return '';
 
   const groups = [];
   if (hasAcquired) {
@@ -4578,6 +4600,13 @@ function renderTurnSummary(t) {
       s && s.name ? `${s.name}${s.level ? ` Lv.${s.level}` : ''}` : ''
     ), 3, 30);
     if (skills) groups.push(['习得技能', skills]);
+  }
+  if (hasLost) {
+    const lostItems = lostItemsText(lost.items);
+    if (lostItems) groups.push(['消耗/丢失', lostItems]);
+    const lostEquip = lostItemsText(lost.equipment);
+    if (lostEquip) groups.push(['失去装备', lostEquip]);
+    if (Number(lost.money) > 0) groups.push(['花费货币', `¥${Math.round(Number(lost.money))}`]);
   }
 
   const groupsHtml = groups.length
@@ -5204,6 +5233,7 @@ async function sendAction(text, timeCost, successRate, options) {
       blocks: blocksFrom(parsed.narration, parsed.dialogue),
       choices: (Array.isArray(parsed.choices) ? parsed.choices : []).map(normalizeChoice).filter(c => c.text),
       acquired: applied.acquired,
+      lost: applied.lost,
       deltas: applied.deltas,
       day: timeInfo.end.day,
       hour: timeInfo.end.hour,
@@ -5324,6 +5354,7 @@ function applyStateChanges(sc, outcome) {
     logs: [], codex: [], bestiary: [], skills: [], locations: [],
     vehicle: null, buildings: []
   };
+  const lost = { items: [], equipment: [], money: 0 };
   if (!sc) sc = {};
   // 底判成功：本回合不允许出现任何真实负面（伤害 / 感染 / 新增伤势），一律拦下
   if (outcomeBaseSuccess(outcome)) {
@@ -5360,6 +5391,7 @@ function applyStateChanges(sc, outcome) {
     const diff = p.money - before;
     if (diff) {
       deltas.money = (deltas.money || 0) + diff;
+      if (diff < 0) lost.money += -diff;
       notes.push(diff > 0 ? `获得 ¥${diff}` : `花掉 ¥${-diff}`);
     }
   }
@@ -5411,7 +5443,10 @@ function applyStateChanges(sc, outcome) {
     if (!it || !it.name) return;
     const idx = state.items.findIndex(i => i.name === it.name);
     if (idx === -1) return;
-    const qty = Number(it.qty) || 1;
+    const want = Number(it.qty) || 1;
+    const qty = Math.min(want, Math.max(0, Number(state.items[idx].qty) || 0));
+    if (qty <= 0) return;
+    lost.items.push({ name: it.name, qty });
     state.items[idx].qty -= qty;
     if (state.items[idx].qty <= 0) state.items.splice(idx, 1);
     notes.push(`失去【${it.name}】×${qty}`);
@@ -5437,6 +5472,7 @@ function applyStateChanges(sc, outcome) {
     if (!g || !g.name) return;
     const i = state.equipment.findIndex(x => x.name === g.name);
     if (i >= 0) {
+      lost.equipment.push({ name: g.name });
       state.equipment.splice(i, 1);
       notes.push(`失去装备【${g.name}】`);
     }
@@ -5737,7 +5773,7 @@ function applyStateChanges(sc, outcome) {
     notes.push(isNew ? `解锁建筑【${name}】` : `建筑【${name}】状态更新`);
   });
 
-  return { deltas, notes, acquired };
+  return { deltas, notes, acquired, lost };
 }
 
 /* ---------- AI 调用 ---------- */
