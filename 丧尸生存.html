@@ -917,6 +917,16 @@
     border-color: rgba(242, 181, 31, .5); box-shadow: 0 0 0 3px rgba(242, 181, 31, .06);
   }
   #setup-personality::placeholder, #profile-personality::placeholder { color: #5c5c66; }
+  #setup-appearance, #setup-hobbies {
+    width: 100%; background: #1b1b21; border: 1px solid #303039; border-radius: 8px;
+    color: var(--text); padding: 8px 12px; font-size: 13px; outline: none;
+  }
+  #setup-hobbies { height: 38px; padding: 0 12px; }
+  #setup-appearance { min-height: 54px; resize: vertical; line-height: 1.5; }
+  #setup-appearance:focus, #setup-hobbies:focus {
+    border-color: rgba(242, 181, 31, .5); box-shadow: 0 0 0 3px rgba(242, 181, 31, .06);
+  }
+  #setup-appearance::placeholder, #setup-hobbies::placeholder { color: #5c5c66; }
   .persona-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .persona-chip {
     height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid #2e2e36;
@@ -1867,6 +1877,12 @@
             </div>
           </div>
           <div class="persona-chips" id="persona-chips"></div>
+        </div>
+        <div class="setup-block">
+          <label class="setup-label" for="setup-appearance">外观体貌 <span class="setup-hint">可选，最多 120 字；之后只能随行动变化</span></label>
+          <textarea id="setup-appearance" rows="2" maxlength="120" placeholder="例如：身高约一米七五，短发，左眉有一道旧疤"></textarea>
+          <label class="setup-label" for="setup-hobbies" style="margin-top:10px;">癖好 / 兴趣 <span class="setup-hint">用顿号或逗号分隔，最多 6 个；之后只能随行动变化</span></label>
+          <input id="setup-hobbies" maxlength="120" autocomplete="off" placeholder="例如：收集打火机、听广播、下棋">
         </div>
         <div class="setup-block">
           <div class="setup-label">难度 <span class="setup-hint">影响爆发时间、初始饥渴与叙事压力</span></div>
@@ -3460,7 +3476,7 @@ function normalizeState(s) {
   const player = Object.assign(d.player, s.player || {});
   player.gender = GENDERS.includes(String(player.gender)) ? String(player.gender) : '未指定';
   player.personality = typeof player.personality === 'string' ? player.personality.trim().slice(0, 40) : '';
-  player.appearance = typeof player.appearance === 'string' ? player.appearance.trim().slice(0, 120) : '';
+  player.appearance = typeof player.appearance === 'string' ? player.appearance.trim().slice(0, 240) : '';
   player.hobbies = Array.isArray(player.hobbies) ? player.hobbies.map(h => String(h).trim().slice(0, 20)).filter(Boolean).slice(0, 8) : [];
   player.money = Number.isFinite(player.money) ? Math.round(Number(player.money)) : 0;
   const meta = Object.assign(d.meta, s.meta || {});
@@ -3561,7 +3577,7 @@ let selectedBodyPart = null;
 let topSystemTab = 'health';
 let setupState = {
   originId: 'courier', difficulty: 'hard', name: '', cancellable: false,
-  gender: '未指定', personality: '',
+  gender: '未指定', personality: '', appearance: '', hobbies: '',
   customDesc: '', customOrigin: null, customLoading: false, customError: ''
 };
 
@@ -5289,6 +5305,25 @@ function applyStateChanges(sc) {
     }
   }
 
+  // 外貌 / 癖好：选出身时设定，之后只能随行动与剧情更新
+  if (typeof sc.appearance === 'string' && sc.appearance.trim()) {
+    const add = sc.appearance.trim().slice(0, 60);
+    const base = String(p.appearance || '').trim();
+    p.appearance = (base ? `${base}；${add}` : add).slice(-240);
+    notes.push(`外貌变化：${add.slice(0, 30)}`);
+  }
+  if (Array.isArray(sc.addHobbies) && sc.addHobbies.length) {
+    const list = Array.isArray(p.hobbies) ? p.hobbies.slice() : [];
+    sc.addHobbies.forEach(h => {
+      const name = String(h || '').trim().slice(0, 20);
+      if (name && !list.includes(name) && list.length < 8) {
+        list.push(name);
+        notes.push(`新增癖好：${name}`);
+      }
+    });
+    p.hobbies = list;
+  }
+
   (sc.addItems || []).forEach(it => {
     if (!it || !it.name) return;
     let qty = Number(it.qty) || 1;
@@ -5875,9 +5910,10 @@ HP ${p.hp}/${p.hpMax} · 饥饿 ${p.hunger}/${p.hungerMax} · 口渴 ${p.thirst}
 14. 本回合判定已由系统掷骰决定，不得改写。叙事和 stateChanges 必须体现：大失败、失败、小失败、小成功、成功、大成功。大失败且成功率高（>=75）时最多轻微擦伤/小损失/尴尬，不能重伤、致残或死亡；大失败且成功率低（<40）且行动高危时，可以重伤、致命伤甚至死亡（hp 扣到 0）。中间值按判定说明处理。
 15. HP 归零或感染度达到 100 即终局；饥饿或口渴归零后进入 3 回合衰竭倒计时，倒计时内进食/饮水可解除，归零同样终局。若判定允许死亡，用 hp 负值和致命伤表现，不要假死、强行救回或无代价复生。
 16. 每回合必须输出 summary：20~50 字的一句话剧情总结，不重复判定结果、不剧透后续，也不要直接复制 narration。
+17. 外貌与癖好在选出身时已设定，之后只随剧情与行动变化：受伤留疤、染血、换装、消瘦写 appearance（一句 60 字内的追加描述）；养成新习惯写 addHobbies（1~2 个短词）。不要每回合都改。
 
 只输出一个 JSON 对象，不要 markdown 代码块，不要解释。格式：
-{"summary":"一句话剧情总结","narration":"第二人称描写，2-4段，用空行分隔","dialogue":[{"speaker":"说话者","text":"台词"}],"stateChanges":{"hp":0,"hunger":-2,"thirst":-3,"sta":-5,"spirit":0,"san":0,"infection":0,"money":0,"addItems":[{"name":"","qty":1,"desc":"","consumable":true}],"removeItems":[{"name":"","qty":1}],"addEquipment":[{"name":"","desc":"","condition":"90%"}],"removeEquipment":[{"name":""}],"addIntel":["情报"],"addStash":[{"location":"","desc":"","items":["物品×数量"]}],"addSkills":[{"name":"","level":1,"desc":""}],"skillExp":[{"name":"","exp":10}],"scene":{"name":"","desc":"","exits":[],"x":3,"y":3,"reserves":[{"name":"","qty":1}]},"stage":{"environment":"","supplies":"","society":""},"addEvents":[{"title":"","content":"","permanent":false}],"addSpecialLogs":[{"title":"","content":""}],"addCodex":[{"category":"","title":"","content":""}],"addContacts":[{"name":"","note":"","location":"","method":"phone","appearance":"","hobbies":[],"favor":0}],"addLocations":[{"name":"","x":3,"y":3,"desc":"","known":true}],"addBestiary":[{"name":"","traits":"","physiology":"","likes":"","threat":"未知","notes":""}],"addInjuries":[{"part":"leftLeg","injury":"","severity":"中度","bleeding":false,"needed":["纱布","碘伏"],"effect":""}],"removeInjuries":[{"part":"leftLeg","injury":""}],"addLogs":[{"title":"","content":"","source":""}],"vehicle":{"name":"","type":"","condition":90,"fuel":50,"cargoCap":200,"weightCap":300,"cargo":[{"name":"","qty":1,"weight":1}]},"addBuildings":[{"name":"","desc":"","rooms":[{"name":"","status":"","desc":""}],"entrances":[{"name":"","status":"","desc":""}]}],"updateBuildings":[{"name":"","desc":"","rooms":[{"name":"","status":"","desc":""}],"entrances":[{"name":"","status":"","desc":""}]}]},"choices":[{"text":"行动描述，不超过20字","timeCost":15,"difficulty":"普通","stat":"智力","skill":"观察","gear":"手电"}]}`;
+{"summary":"一句话剧情总结","narration":"第二人称描写，2-4段，用空行分隔","dialogue":[{"speaker":"说话者","text":"台词"}],"stateChanges":{"hp":0,"hunger":-2,"thirst":-3,"sta":-5,"spirit":0,"san":0,"infection":0,"money":0,"appearance":"","addHobbies":[],"addItems":[{"name":"","qty":1,"desc":"","consumable":true}],"removeItems":[{"name":"","qty":1}],"addEquipment":[{"name":"","desc":"","condition":"90%"}],"removeEquipment":[{"name":""}],"addIntel":["情报"],"addStash":[{"location":"","desc":"","items":["物品×数量"]}],"addSkills":[{"name":"","level":1,"desc":""}],"skillExp":[{"name":"","exp":10}],"scene":{"name":"","desc":"","exits":[],"x":3,"y":3,"reserves":[{"name":"","qty":1}]},"stage":{"environment":"","supplies":"","society":""},"addEvents":[{"title":"","content":"","permanent":false}],"addSpecialLogs":[{"title":"","content":""}],"addCodex":[{"category":"","title":"","content":""}],"addContacts":[{"name":"","note":"","location":"","method":"phone","appearance":"","hobbies":[],"favor":0}],"addLocations":[{"name":"","x":3,"y":3,"desc":"","known":true}],"addBestiary":[{"name":"","traits":"","physiology":"","likes":"","threat":"未知","notes":""}],"addInjuries":[{"part":"leftLeg","injury":"","severity":"中度","bleeding":false,"needed":["纱布","碘伏"],"effect":""}],"removeInjuries":[{"part":"leftLeg","injury":""}],"addLogs":[{"title":"","content":"","source":""}],"vehicle":{"name":"","type":"","condition":90,"fuel":50,"cargoCap":200,"weightCap":300,"cargo":[{"name":"","qty":1,"weight":1}]},"addBuildings":[{"name":"","desc":"","rooms":[{"name":"","status":"","desc":""}],"entrances":[{"name":"","status":"","desc":""}]}],"updateBuildings":[{"name":"","desc":"","rooms":[{"name":"","status":"","desc":""}],"entrances":[{"name":"","status":"","desc":""}]}]},"choices":[{"text":"行动描述，不超过20字","timeCost":15,"difficulty":"普通","stat":"智力","skill":"观察","gear":"手电"}]}`;
 }
 
 function buildHistoryMessages() {
@@ -6045,6 +6081,10 @@ function renderSetup() {
 function syncSetupIdentity() {
   const pInput = $('setup-personality');
   if (pInput) pInput.value = setupState.personality;
+  const aInput = $('setup-appearance');
+  if (aInput) aInput.value = setupState.appearance;
+  const hInput = $('setup-hobbies');
+  if (hInput) hInput.value = setupState.hobbies;
   document.querySelectorAll('#gender-row .gender-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.gender === setupState.gender);
   });
@@ -6394,13 +6434,18 @@ const ORIGIN_EXTRAS = {
   }
 };
 
-function createGame(originId, name, diffKey, customOrigin, gender = '未指定', personality = '') {
+function createGame(originId, name, diffKey, customOrigin, gender = '未指定', personality = '', appearance = '', hobbies = '') {
   const o = (originId === 'custom' && customOrigin)
     ? customOrigin
     : (ORIGINS[originId] || ORIGINS.courier);
   const extra = o.id === 'custom'
     ? { money: 100, home: { name: '出租屋', desc: '你自己的小住处。' }, contacts: [{ name: '家人', note: '你的家人，隔一阵子会发消息来。', location: '老家', method: 'phone', favor: 85 }] }
     : (ORIGIN_EXTRAS[o.id] || null);
+  const hobbyInput = String(hobbies || '').split(/[、,，;；]/).map(h => h.trim().slice(0, 20)).filter(Boolean);
+  const finalHobbies = hobbyInput.length
+    ? hobbyInput.slice(0, 8)
+    : (Array.isArray(o.hobbies) ? o.hobbies.map(h => String(h).trim().slice(0, 20)).filter(Boolean).slice(0, 8) : []);
+  const finalAppearance = String(appearance || o.appearance || '').trim().slice(0, 240);
   const dd = DIFFICULTIES[diffKey] || DIFFICULTIES.hard;
   const fresh = DEFAULT_STATE();
   const outbreakDay = pickOutbreakDay(dd.key);
@@ -6435,8 +6480,8 @@ function createGame(originId, name, diffKey, customOrigin, gender = '未指定',
     originDesc: o.blurb,
     gender: GENDERS.includes(String(gender)) ? String(gender) : '未指定',
     personality: String(personality || '').trim().slice(0, 40),
-    appearance: String(o.appearance || '').trim().slice(0, 120),
-    hobbies: Array.isArray(o.hobbies) ? o.hobbies.map(h => String(h).trim().slice(0, 20)).filter(Boolean).slice(0, 8) : [],
+    appearance: finalAppearance,
+    hobbies: finalHobbies,
     money: Number(extra && extra.money) || 0,
     hp: 100, hpMax: 100,
     sta: o.stats.sta, staMax: 100,
@@ -6515,7 +6560,7 @@ function confirmSetup() {
     return;
   }
   createGame(setupState.originId, name, setupState.difficulty, setupState.customOrigin,
-    setupState.gender, setupState.personality);
+    setupState.gender, setupState.personality, setupState.appearance, setupState.hobbies);
   $('setup').classList.remove('show');
   toast(`世界线 ${state.meta.worldline} 已开启 · ${state.player.origin} · ${state.meta.day} 天`, 'ok');
 }
@@ -7219,7 +7264,7 @@ function openProfile() {
   const currentGender = GENDERS.includes(String(p.gender)) ? String(p.gender) : '未指定';
   const currentPersonality = String(p.personality || '');
   const currentAppearance = String(p.appearance || '');
-  const currentHobbies = Array.isArray(p.hobbies) ? p.hobbies.join('、') : '';
+  const currentHobbies = (Array.isArray(p.hobbies) && p.hobbies.length) ? p.hobbies.join('、') : '（未记录）';
   showModal('角色档案', `
     <div class="form-group">
       <label>性别</label>
@@ -7235,14 +7280,14 @@ function openProfile() {
       </div>
     </div>
     <div class="form-group">
-      <label for="profile-appearance">外观体貌</label>
-      <textarea id="profile-appearance" rows="2" maxlength="120" autocomplete="off" placeholder="例如：身高约一米七五，短发，左眉有一道旧疤">${esc(currentAppearance)}</textarea>
+      <label>外观体貌 <span class="setup-hint">随行动变化，不可手动修改</span></label>
+      <p class="status-line">${esc(currentAppearance || '（未记录）')}</p>
     </div>
     <div class="form-group">
-      <label for="profile-hobbies">兴趣嗜好 <span class="setup-hint">用顿号或逗号分隔</span></label>
-      <input id="profile-hobbies" maxlength="120" autocomplete="off" value="${esc(currentHobbies)}" placeholder="例如：听广播、收集打火机、下棋">
+      <label>癖好 / 兴趣 <span class="setup-hint">随行动变化，不可手动修改</span></label>
+      <p class="status-line">${esc(currentHobbies)}</p>
     </div>
-    <p class="hint">性别、性格、体貌与嗜好会写入角色状态与存档，并用于 AI 叙事中的描写。</p>
+    <p class="hint">外貌与癖好在选择出身时设定，之后只随剧情与行动变化；此处可查看，不能手动修改。</p>
     <div class="form-actions">
       <button class="btn primary" id="profile-save">保存档案</button>
     </div>
@@ -7274,8 +7319,6 @@ function openProfile() {
     $('profile-save').addEventListener('click', () => {
       state.player.gender = gender;
       state.player.personality = $('profile-personality').value.trim().slice(0, 40);
-      state.player.appearance = $('profile-appearance').value.trim().slice(0, 120);
-      state.player.hobbies = $('profile-hobbies').value.split(/[、,，;；]/).map(h => h.trim().slice(0, 20)).filter(Boolean).slice(0, 8);
       saveLocal();
       const scrollTop = $('story-scroll').scrollTop;
       renderAll();
@@ -7671,6 +7714,14 @@ function bindEvents() {
     document.querySelectorAll('#persona-chips .persona-chip').forEach(b => {
       b.classList.toggle('active', b.dataset.persona === current);
     });
+    renderSetupPreview();
+  });
+  $('setup-appearance').addEventListener('input', e => {
+    setupState.appearance = e.target.value;
+    renderSetupPreview();
+  });
+  $('setup-hobbies').addEventListener('input', e => {
+    setupState.hobbies = e.target.value;
     renderSetupPreview();
   });
   $('btn-edit-profile').addEventListener('click', openProfile);

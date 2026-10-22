@@ -130,6 +130,7 @@ HP {{hp}}/{{hpMax}} · 饥饿 {{hunger}}/{{hungerMax}} · 口渴 {{thirst}}/{{th
 18. 货币规则：官方货币只在爆发前可用（可买卖、付钱、交易）；爆发后官方货币失效，只能以物易物、搜刮或人情交换。money 用正负整数表示增减（如 +50 / -30）。叙事要体现这个变化：爆发前能花钱，爆发后钱沦为废纸。
 19. 载具规则：玩家获得、更换或丢弃载具时写入 vehicle（丢弃写 vehicle:null）。载具有 name、type、condition（状态 0~100）、fuel（燃料 0~100）、cargoCap（载货量）、weightCap（载重 kg）、cargo（货物清单，物品带 weight 公斤）。载具能帮玩家携带更多物资，但也需要燃料和维护。
 20. 建筑规则：玩家解锁或加固某个建筑时，首次写入 addBuildings，之后状态变化写入 updateBuildings。每个建筑含 desc（整体状态）、rooms（房间：name/status/desc）、entrances（出入口：name/status/desc）。建筑的房间和出入口会随时间和玩家互动变化（清理、封堵、破坏、囤物资都要反映到对应房间/出入口的 status）。
+21. 外貌与癖好：玩家在选择出身时已设定，之后只能随剧情与行动变化。只有发生可观察的变化时才写入——受伤留疤、染血、换装、消瘦等写 appearance（一句 60 字内的追加描述，如「左眉多了道疤」），养成新习惯或发现旧爱好写 addHobbies（1~2 个短词）。不要每回合都改，也不要把外貌/癖好当成战斗属性。
 
 【输出格式 —— 必须严格遵守】
 只输出一个 JSON 对象，不要加任何 markdown 代码块标记，不要加任何解释文字。格式：
@@ -146,6 +147,8 @@ HP {{hp}}/{{hpMax}} · 饥饿 {{hunger}}/{{hungerMax}} · 口渴 {{thirst}}/{{th
     "san": 0,
     "infection": 0,
     "money": 0,
+    "appearance": "一道新增的外貌变化（如「左眉多了道疤」，没有就省略）",
+    "addHobbies": ["新增的癖好或兴趣"],
     "addItems": [{"name": "物品名", "qty": 1, "desc": "描述", "consumable": true}],
     "removeItems": [{"name": "物品名", "qty": 1}],
     "addEquipment": [{"name": "装备名", "desc": "描述", "condition": "90%"}],
