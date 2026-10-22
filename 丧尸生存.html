@@ -687,12 +687,14 @@
   }
   .modal-body .form-group { margin-bottom: 13px; }
   .form-group label { display: block; font-size: 11px; color: var(--dim); margin-bottom: 5px; letter-spacing: .5px; }
-  .form-group input, .form-group select {
-    width: 100%; height: 36px; background: #1b1b21;
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; background: #1b1b21;
     border: 1px solid #303039; border-radius: 8px;
     color: var(--text); padding: 0 10px; font-size: 12.5px; outline: none;
   }
-  .form-group input:focus, .form-group select:focus { border-color: rgba(242, 181, 31, .5); }
+  .form-group input, .form-group select { height: 36px; }
+  .form-group textarea { height: auto; min-height: 60px; padding: 8px 10px; resize: vertical; line-height: 1.6; }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: rgba(242, 181, 31, .5); }
   .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
   .btn {
     height: 34px; padding: 0 16px; border-radius: 8px;
@@ -1255,6 +1257,29 @@
   }
   .contact-call:hover:not(:disabled) { background: rgba(242, 181, 31, .12); }
   .contact-call:disabled { opacity: .4; cursor: not-allowed; }
+  .contact-favor { font-size: 9px; padding: 2px 7px; border-radius: 5px; white-space: nowrap; }
+  .contact-favor.good { color: #5bdd93; background: rgba(49, 196, 108, .1); }
+  .contact-favor.mid { color: #b9a878; background: rgba(255, 255, 255, .05); }
+  .contact-favor.bad { color: #ff8b90; background: rgba(224, 90, 95, .1); }
+  .contact-line { font-size: 10px; color: var(--dim); line-height: 1.5; margin-top: 3px; }
+  .contact-line b { color: var(--mute); margin-right: 5px; font-weight: 500; }
+
+  /* 载具 / 建筑 */
+  .vehicle-card, .building-card { background: #1c1c22; border: 1px solid #2b2b33; border-radius: 9px; padding: 10px 11px; margin-bottom: 8px; }
+  .vehicle-head, .building-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .vehicle-name, .building-name { font-size: 13px; color: var(--text-soft); font-weight: 600; }
+  .vehicle-type, .building-time { font-size: 9.5px; color: var(--mute); }
+  .vehicle-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+  .vehicle-stat { background: #17171c; border: 1px solid #26262d; border-radius: 7px; padding: 6px 8px; text-align: center; }
+  .vehicle-stat span { display: block; font-size: 9px; color: var(--mute); }
+  .vehicle-stat b { display: block; font-size: 12px; color: var(--text); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .building-desc { font-size: 10.5px; color: var(--dim); line-height: 1.6; }
+  .room-row { padding: 6px 0; border-bottom: 1px dashed rgba(255, 255, 255, .06); }
+  .room-row:last-child { border-bottom: 0; }
+  .room-top { display: flex; justify-content: space-between; gap: 8px; }
+  .room-name { font-size: 11.5px; color: var(--text-soft); }
+  .room-status { font-size: 10px; color: #c8a95c; white-space: nowrap; }
+  .room-desc { font-size: 10px; color: var(--mute); line-height: 1.5; margin-top: 2px; }
 
   /* 地图 */
   .mini-map {
@@ -1484,6 +1509,8 @@
         <button type="button" class="sys-tab" data-sys="map">地图 <span class="count-badge" id="map-count">0</span></button>
         <button type="button" class="sys-tab" data-sys="contacts">联系人 <span class="count-badge" id="contact-count">0</span></button>
         <button type="button" class="sys-tab" data-sys="attributes">属性</button>
+        <button type="button" class="sys-tab" data-sys="vehicle">载具</button>
+        <button type="button" class="sys-tab" data-sys="building">建筑</button>
         <button type="button" class="sys-tab" data-sys="world">世界</button>
         <button type="button" class="sys-tab" data-sys="scene">场景</button>
         <button type="button" class="sys-tab" data-sys="events">事件 <span class="count-badge" id="event-count">0</span></button>
@@ -1577,12 +1604,24 @@
           <div class="sys-attr-col">
             <div class="attr-row"><span>智力</span><b id="v-int">50</b></div>
             <div class="attr-row"><span>体质</span><b id="v-con">50</b></div>
+            <div class="attr-row"><span>货币</span><b id="v-money">¥0</b></div>
+            <div class="attr-row"><span>货币状态</span><b id="v-money-state">可用</b></div>
+            <div class="attr-row"><span>负重</span><b id="v-weight">0 / 40 kg</b></div>
+            <div class="attr-row"><span>携带量</span><b id="v-carry">0 / 10</b></div>
           </div>
           <div class="sys-skill-col">
             <div class="mini-divider">技能</div>
             <div class="sys-panel-scroll" id="skill-list"></div>
           </div>
         </div>
+      </div>
+
+      <div class="sys-panel" data-sys-panel="vehicle">
+        <div class="sys-panel-scroll" id="vehicle-body"></div>
+      </div>
+
+      <div class="sys-panel" data-sys-panel="building">
+        <div class="sys-panel-scroll" id="building-body"></div>
       </div>
 
       <div class="sys-panel" data-sys-panel="world">
@@ -2322,10 +2361,14 @@ function DEFAULT_STATE() {
     contacts: [],
     bestiary: [],
     injuries: [],
+    vehicle: null,
+    buildings: [],
     map: { locations: [], current: { x: 3, y: 3 } },
     player: {
       name: '', title: '', origin: '', originId: '', originDesc: '',
       gender: '未指定', personality: '',
+      appearance: '', hobbies: [],
+      money: 0,
       hp: 100, hpMax: 100,
       hunger: 80, hungerMax: 100,
       thirst: 80, thirstMax: 100,
@@ -3078,6 +3121,13 @@ function normalizeContact(c) {
     note: String(c && c.note || '').slice(0, 140),
     location: String(c && c.location || '').slice(0, 30),
     method,
+    appearance: String(c && c.appearance || '').slice(0, 120),
+    hobbies: Array.isArray(c && c.hobbies)
+      ? c.hobbies.map(h => String(h).trim().slice(0, 20)).filter(Boolean).slice(0, 6)
+      : (typeof c.hobbies === 'string' && c.hobbies.trim()
+        ? c.hobbies.split(/[、,，;；]/).map(h => h.trim()).filter(Boolean).slice(0, 6)
+        : []),
+    favor: Number.isFinite(c && c.favor) ? clamp(Math.round(Number(c.favor)), 0, 100) : 50,
     lastDay: Number.isFinite(c && c.lastDay) ? c.lastDay : 1,
     lastHour: Number.isFinite(c && c.lastHour) ? c.lastHour : 0,
     lastMinute: Number.isFinite(c && c.lastMinute) ? c.lastMinute : 0
@@ -3289,11 +3339,93 @@ function contactMethodLabel(method) {
   return '未知';
 }
 
+function favorLabel(favor) {
+  const f = clamp(Math.round(Number(favor) || 50), 0, 100);
+  if (f >= 80) return '亲密';
+  if (f >= 60) return '友善';
+  if (f >= 40) return '陌生';
+  if (f >= 20) return '戒备';
+  return '敌对';
+}
+
+function normalizeVehicle(v) {
+  if (!v || !v.name) return null;
+  return {
+    name: String(v.name).trim().slice(0, 30),
+    type: String(v.type || '未知').trim().slice(0, 20),
+    condition: clamp(Math.round(Number(v.condition) || 100), 0, 100),
+    fuel: clamp(Math.round(Number(v.fuel) || 0), 0, 100),
+    cargoCap: Math.max(0, Math.round(Number(v.cargoCap) || 0)),
+    weightCap: Math.max(0, Math.round(Number(v.weightCap) || 0)),
+    cargo: Array.isArray(v.cargo)
+      ? v.cargo.map(it => ({
+          name: String(it && it.name || '').trim().slice(0, 20),
+          qty: clamp(Math.round(Number(it && it.qty) || 1), 0, 999),
+          weight: num(it && it.weight, 1)
+        })).filter(it => it.name && it.qty > 0).slice(0, 40)
+      : []
+  };
+}
+
+function normalizeBuilding(b) {
+  return {
+    name: String(b && b.name || '').trim().slice(0, 40),
+    desc: String(b && b.desc || '').slice(0, 400),
+    rooms: Array.isArray(b && b.rooms)
+      ? b.rooms.map(r => ({
+          name: String(r && r.name || '').trim().slice(0, 30),
+          status: String(r && r.status || '未知').trim().slice(0, 60),
+          desc: String(r && r.desc || '').slice(0, 200)
+        })).filter(r => r.name).slice(0, 20)
+      : [],
+    entrances: Array.isArray(b && b.entrances)
+      ? b.entrances.map(e => ({
+          name: String(e && e.name || '').trim().slice(0, 30),
+          status: String(e && e.status || '未知').trim().slice(0, 60),
+          desc: String(e && e.desc || '').slice(0, 200)
+        })).filter(e => e.name).slice(0, 12)
+      : [],
+    updatedDay: Number.isFinite(b && b.updatedDay) ? b.updatedDay : 1,
+    updatedHour: Number.isFinite(b && b.updatedHour) ? b.updatedHour : 0,
+    updatedMinute: Number.isFinite(b && b.updatedMinute) ? b.updatedMinute : 0
+  };
+}
+
+/* 货币：爆发前官方货币可用，爆发后失效 */
+function currencyUsable() {
+  return !state.meta.outbreakStarted;
+}
+
+/* 负重 / 携带量 */
+function bagBonus() {
+  const all = [...(state.items || []), ...(state.equipment || [])];
+  return all.reduce((sum, x) => {
+    const n = String(x && x.name || '');
+    return /背包|布袋|腰包|挎包|旅行包|登山包|邮差包/.test(n) ? sum + 4 : sum;
+  }, 0);
+}
+function carryCap() { return 10 + bagBonus(); }
+function currentCarry() { return (state.items || []).reduce((a, it) => a + (Number(it.qty) || 0), 0); }
+function weightCap() {
+  const con = Number(state.player && state.player.con) || 50;
+  return Math.round(15 + con * 0.5);
+}
+function itemWeight(it) { return Number(it && it.weight) || 0.5; }
+function currentWeight() {
+  const itemW = (state.items || []).reduce((a, it) => a + itemWeight(it) * (Number(it.qty) || 0), 0);
+  const gearW = (state.equipment || []).reduce((a, g) => a + itemWeight(g), 0);
+  return Math.round((itemW + gearW) * 10) / 10;
+}
+function isOverloaded() { return currentWeight() > weightCap() || currentCarry() > carryCap(); }
+
 function normalizeState(s) {
   const d = DEFAULT_STATE();
   const player = Object.assign(d.player, s.player || {});
   player.gender = GENDERS.includes(String(player.gender)) ? String(player.gender) : '未指定';
   player.personality = typeof player.personality === 'string' ? player.personality.trim().slice(0, 40) : '';
+  player.appearance = typeof player.appearance === 'string' ? player.appearance.trim().slice(0, 120) : '';
+  player.hobbies = Array.isArray(player.hobbies) ? player.hobbies.map(h => String(h).trim().slice(0, 20)).filter(Boolean).slice(0, 8) : [];
+  player.money = Number.isFinite(player.money) ? Math.round(Number(player.money)) : 0;
   const meta = Object.assign(d.meta, s.meta || {});
   meta.day = Number.isFinite(meta.day) ? meta.day : 1;
   meta.hour = Number.isFinite(meta.hour) ? clamp(Math.round(meta.hour), 0, 23) : 7;
@@ -3323,6 +3455,8 @@ function normalizeState(s) {
   const contacts = (Array.isArray(s.contacts) ? s.contacts : []).map(normalizeContact).filter(c => c.name);
   const bestiary = (Array.isArray(s.bestiary) ? s.bestiary : []).map(normalizeBestiary).filter(b => b.name);
   const injuries = (Array.isArray(s.injuries) ? s.injuries : []).map(normalizeInjury).filter(i => i.injury);
+  const vehicle = normalizeVehicle(s.vehicle);
+  const buildings = (Array.isArray(s.buildings) ? s.buildings : []).map(normalizeBuilding).filter(b => b.name);
   const map = normalizeMap(s.map, scene);
   const codexRaw = Array.isArray(s.codex) && s.codex.length ? s.codex : defaultCodex();
   const codex = codexRaw.filter(c => (c.category || '') !== '感染者特征');
@@ -3338,6 +3472,8 @@ function normalizeState(s) {
     contacts,
     bestiary,
     injuries,
+    vehicle,
+    buildings,
     map,
     scene,
     world,
@@ -3427,6 +3563,8 @@ function renderAll() {
   renderEvents();
   renderLogs();
   renderCodex();
+  renderVehicle();
+  renderBuilding();
   renderMode();
   renderSaveFoot();
   renderStoryPage(currentPage);
@@ -3449,6 +3587,25 @@ function renderStats() {
   $('v-status').textContent = (p.status && p.status.length) ? p.status.join('、') : '无';
   $('v-int').textContent = p.intel;
   $('v-con').textContent = p.con;
+
+  // 货币 / 负重 / 携带量
+  const moneyEl = $('v-money');
+  if (moneyEl) moneyEl.textContent = `¥${Number(p.money) || 0}`;
+  const moneyStateEl = $('v-money-state');
+  if (moneyStateEl) {
+    moneyStateEl.textContent = currencyUsable() ? '可用' : '已失效';
+    moneyStateEl.style.color = currencyUsable() ? '#5bdd93' : '#ff8b90';
+  }
+  const weightEl = $('v-weight');
+  if (weightEl) {
+    weightEl.textContent = `${currentWeight()} / ${weightCap()} kg`;
+    weightEl.style.color = currentWeight() > weightCap() ? '#ff8b90' : '';
+  }
+  const carryEl = $('v-carry');
+  if (carryEl) {
+    carryEl.textContent = `${currentCarry()} / ${carryCap()}`;
+    carryEl.style.color = currentCarry() > carryCap() ? '#ff8b90' : '';
+  }
 
   const t = state.turns[currentPage];
   renderDeltas(t && t.deltas ? t.deltas : {});
@@ -3686,7 +3843,7 @@ function renderMode() {
 }
 
 function setTopSystemTab(tab) {
-  const valid = ['health', 'inventory', 'map', 'contacts', 'attributes', 'world', 'scene', 'events', 'logs', 'codex', 'save'];
+  const valid = ['health', 'inventory', 'map', 'contacts', 'attributes', 'vehicle', 'building', 'world', 'scene', 'events', 'logs', 'codex', 'save'];
   topSystemTab = valid.includes(tab) ? tab : 'health';
   const system = $('top-system');
   if (system && system.classList.contains('collapsed')) {
@@ -3715,6 +3872,10 @@ function setTopSystemTab(tab) {
   } else if (topSystemTab === 'attributes') {
     renderStats();
     renderSkills();
+  } else if (topSystemTab === 'vehicle') {
+    renderVehicle();
+  } else if (topSystemTab === 'building') {
+    renderBuilding();
   } else if (topSystemTab === 'world') {
     renderWorld();
   } else if (topSystemTab === 'scene') {
@@ -3776,13 +3937,18 @@ function renderContacts() {
       callLabel = `联系 · ${formatDuration(callTime)} · ${rate}%`;
     }
     const time = `${String(c.lastHour || 0).padStart(2, '0')}:${String(c.lastMinute || 0).padStart(2, '0')}`;
+    const favor = clamp(Math.round(Number(c.favor) || 50), 0, 100);
+    const favorCls = favor >= 60 ? 'good' : (favor <= 39 ? 'bad' : 'mid');
     return `
       <div class="contact-item">
         <div class="contact-top">
           <span class="contact-name">${esc(c.name)}</span>
           <span class="contact-method">${contactMethodLabel(c.method)}</span>
+          <span class="contact-favor ${favorCls}">好感 ${favor} · ${favorLabel(favor)}</span>
         </div>
         ${c.note ? `<div class="contact-note">${esc(c.note)}</div>` : ''}
+        ${c.appearance ? `<div class="contact-line"><b>体貌</b>${esc(c.appearance)}</div>` : ''}
+        ${c.hobbies && c.hobbies.length ? `<div class="contact-line"><b>嗜好</b>${c.hobbies.map(h => esc(h)).join('、')}</div>` : ''}
         <div class="contact-meta">
           <span>地点：${esc(c.location || '未知')}</span>
           <span>最近：第 ${c.lastDay || 1} 天 ${time}</span>
@@ -3797,6 +3963,58 @@ function renderContacts() {
   box.querySelectorAll('.contact-call').forEach(btn => {
     btn.addEventListener('click', () => callContact(btn.dataset.contact));
   });
+}
+
+function renderVehicle() {
+  const box = $('vehicle-body');
+  if (!box) return;
+  const v = state.vehicle;
+  if (!v) {
+    box.innerHTML = '<div class="empty-hint">还没有载具。找到汽车、摩托车或自行车后，会显示在这里。</div>';
+    return;
+  }
+  const cargoW = v.cargo.reduce((a, it) => a + (Number(it.weight) || 1) * (Number(it.qty) || 0), 0);
+  const cargoUnits = v.cargo.reduce((a, it) => a + (Number(it.qty) || 0), 0);
+  box.innerHTML = `
+    <div class="vehicle-card">
+      <div class="vehicle-head"><span class="vehicle-name">${esc(v.name)}</span><span class="vehicle-type">${esc(v.type || '未知')}</span></div>
+      <div class="vehicle-grid">
+        <div class="vehicle-stat"><span>状态</span><b>${v.condition}%</b></div>
+        <div class="vehicle-stat"><span>燃料</span><b>${v.fuel}%</b></div>
+        <div class="vehicle-stat"><span>载货量</span><b>${cargoUnits} / ${v.cargoCap || 0}</b></div>
+        <div class="vehicle-stat"><span>载重</span><b>${cargoW} / ${v.weightCap || 0} kg</b></div>
+      </div>
+      <div class="bar"><div class="bar-fill hp" style="width:${clamp(v.condition, 0, 100)}%"></div></div>
+      <div class="mini-divider">载货清单</div>
+      ${v.cargo.length
+        ? v.cargo.map(it => `<div class="inv-row"><div class="inv-name"><span>${esc(it.name)}</span><em>×${it.qty}</em></div></div>`).join('')
+        : '<div class="empty-hint">货厢是空的</div>'}
+    </div>`;
+}
+
+function renderBuilding() {
+  const box = $('building-body');
+  if (!box) return;
+  if (!state.buildings.length) {
+    box.innerHTML = '<div class="empty-hint">还没有解锁建筑。确认某个建筑安全后，它的结构与房间会记录在这里。</div>';
+    return;
+  }
+  box.innerHTML = state.buildings.map(b => {
+    const t = `第 ${b.updatedDay || 1} 天 ${String(b.updatedHour || 0).padStart(2, '0')}:${String(b.updatedMinute || 0).padStart(2, '0')}`;
+    return `
+      <div class="building-card">
+        <div class="building-head"><span class="building-name">${esc(b.name)}</span><span class="building-time">更新：${t}</span></div>
+        ${b.desc ? `<div class="building-desc">${esc(b.desc)}</div>` : ''}
+        ${b.rooms && b.rooms.length ? `
+          <div class="mini-divider">房间</div>
+          ${b.rooms.map(r => `<div class="room-row"><div class="room-top"><span class="room-name">${esc(r.name)}</span><span class="room-status">${esc(r.status || '未知')}</span></div>${r.desc ? `<div class="room-desc">${esc(r.desc)}</div>` : ''}</div>`).join('')}
+        ` : ''}
+        ${b.entrances && b.entrances.length ? `
+          <div class="mini-divider">出入口</div>
+          ${b.entrances.map(e => `<div class="room-row"><div class="room-top"><span class="room-name">${esc(e.name)}</span><span class="room-status">${esc(e.status || '未知')}</span></div>${e.desc ? `<div class="room-desc">${esc(e.desc)}</div>` : ''}</div>`).join('')}
+        ` : ''}
+      </div>`;
+  }).join('');
 }
 
 function renderMapCard() {
@@ -4997,7 +5215,8 @@ function applyStateChanges(sc) {
   const notes = [];
   const acquired = {
     items: [], equipment: [], stash: [], intel: [], contacts: [],
-    logs: [], codex: [], bestiary: [], skills: [], locations: []
+    logs: [], codex: [], bestiary: [], skills: [], locations: [],
+    vehicle: null, buildings: []
   };
   if (!sc) sc = {};
   const p = state.player;
@@ -5022,12 +5241,27 @@ function applyStateChanges(sc) {
   if (typeof sc.thirst === 'number') applyNum(sc.thirst, 'thirst', p.thirstMax, 'thirst');
   else applyNum(-1, 'thirst', p.thirstMax, 'thirst');
 
+  // 货币（官方货币）：正负表示增减
+  if (typeof sc.money === 'number' && sc.money !== 0) {
+    const before = Number(p.money) || 0;
+    p.money = Math.max(0, Math.round(before + sc.money));
+    const diff = p.money - before;
+    if (diff) {
+      deltas.money = (deltas.money || 0) + diff;
+      notes.push(diff > 0 ? `获得 ¥${diff}` : `花掉 ¥${-diff}`);
+    }
+  }
+
   (sc.addItems || []).forEach(it => {
     if (!it || !it.name) return;
     const exist = state.items.find(i => i.name === it.name);
     const qty = Number(it.qty) || 1;
     if (exist) exist.qty += qty;
-    else state.items.push({ name: it.name, qty, desc: it.desc || '', consumable: !!it.consumable });
+    else {
+      const item = { name: it.name, qty, desc: it.desc || '', consumable: !!it.consumable };
+      if (Number.isFinite(Number(it.weight))) item.weight = Number(it.weight);
+      state.items.push(item);
+    }
     acquired.items.push({ name: it.name, qty });
     notes.push(`获得【${it.name}】×${qty}`);
   });
@@ -5050,7 +5284,9 @@ function applyStateChanges(sc) {
       if (g.condition) exist.condition = g.condition;
       if (g.desc) exist.desc = g.desc;
     } else {
-      state.equipment.push({ name: g.name, condition: g.condition || '100%', desc: g.desc || '' });
+      const item = { name: g.name, condition: g.condition || '100%', desc: g.desc || '' };
+      if (Number.isFinite(Number(g.weight))) item.weight = Number(g.weight);
+      state.equipment.push(item);
     }
     if (isNew) acquired.equipment.push({ name: g.name, condition: g.condition || '100%' });
     notes.push(`装备【${g.name}】`);
@@ -5144,6 +5380,7 @@ function applyStateChanges(sc) {
     if (!contact) {
       contact = {
         name, note: '', location: '', method: 'unknown',
+        appearance: '', hobbies: [], favor: 50,
         lastDay: state.meta.day || 1,
         lastHour: state.meta.hour || 0,
         lastMinute: state.meta.minute || 0
@@ -5152,10 +5389,18 @@ function applyStateChanges(sc) {
     }
     if (typeof c.note === 'string' && c.note.trim()) contact.note = c.note.trim().slice(0, 140);
     if (typeof c.location === 'string' && c.location.trim()) contact.location = c.location.trim().slice(0, 30);
+    if (typeof c.appearance === 'string' && c.appearance.trim()) contact.appearance = c.appearance.trim().slice(0, 120);
+    if (Array.isArray(c.hobbies) && c.hobbies.length) {
+      contact.hobbies = c.hobbies.map(h => String(h).trim().slice(0, 20)).filter(Boolean).slice(0, 6);
+    }
     if (contact.method === 'unknown' || !contact.method) {
       contact.method = method;
     } else if (method === 'phone' || method === 'radio') {
       contact.method = method;
+    }
+    if (Number.isFinite(c.favorSet)) contact.favor = clamp(Math.round(Number(c.favorSet)), 0, 100);
+    if (Number.isFinite(c.favor) && Number(c.favor) !== 0) {
+      contact.favor = clamp(Math.round((Number(contact.favor) || 50) + Number(c.favor)), 0, 100);
     }
     contact.lastDay = state.meta.day || 1;
     contact.lastHour = state.meta.hour || 0;
@@ -5296,6 +5541,61 @@ function applyStateChanges(sc) {
     notes.push(`收集日志【${lg.title}】`);
   });
 
+  // 载具：获得 / 更新 / 丢弃
+  if (sc.vehicle === null) {
+    if (state.vehicle) notes.push(`失去载具【${state.vehicle.name}】`);
+    state.vehicle = null;
+  } else if (sc.vehicle && typeof sc.vehicle === 'object' && sc.vehicle.name) {
+    const v = sc.vehicle;
+    if (!state.vehicle) {
+      state.vehicle = normalizeVehicle(v);
+      acquired.vehicle = state.vehicle;
+      notes.push(`获得载具【${state.vehicle.name}】`);
+    } else {
+      if (typeof v.name === 'string' && v.name.trim()) state.vehicle.name = v.name.trim().slice(0, 30);
+      if (typeof v.type === 'string' && v.type.trim()) state.vehicle.type = v.type.trim().slice(0, 20);
+      if (Number.isFinite(v.condition)) state.vehicle.condition = clamp(Math.round(v.condition), 0, 100);
+      if (Number.isFinite(v.fuel)) state.vehicle.fuel = clamp(Math.round(v.fuel), 0, 100);
+      if (Number.isFinite(v.cargoCap)) state.vehicle.cargoCap = Math.max(0, Math.round(v.cargoCap));
+      if (Number.isFinite(v.weightCap)) state.vehicle.weightCap = Math.max(0, Math.round(v.weightCap));
+      if (Array.isArray(v.cargo)) state.vehicle.cargo = normalizeVehicle(v).cargo;
+      notes.push(`载具【${state.vehicle.name}】状态更新`);
+    }
+  }
+
+  // 建筑结构：解锁 / 更新（addBuildings 与 updateBuildings 合并处理）
+  (sc.addBuildings || []).concat(sc.updateBuildings || []).forEach(b => {
+    if (!b || !b.name) return;
+    const name = String(b.name).trim().slice(0, 40);
+    if (!name) return;
+    let building = state.buildings.find(x => x.name === name);
+    const isNew = !building;
+    if (!building) {
+      building = normalizeBuilding({ name });
+      state.buildings.push(building);
+    }
+    if (typeof b.desc === 'string' && b.desc.trim()) building.desc = b.desc.trim().slice(0, 400);
+    (Array.isArray(b.rooms) ? b.rooms : []).forEach(r => {
+      if (!r || !r.name) return;
+      let room = building.rooms.find(x => x.name === r.name);
+      if (!room) { room = { name: String(r.name).trim().slice(0, 30), status: '', desc: '' }; building.rooms.push(room); }
+      if (typeof r.status === 'string') room.status = r.status.trim().slice(0, 60);
+      if (typeof r.desc === 'string') room.desc = r.desc.slice(0, 200);
+    });
+    (Array.isArray(b.entrances) ? b.entrances : []).forEach(e => {
+      if (!e || !e.name) return;
+      let ent = building.entrances.find(x => x.name === e.name);
+      if (!ent) { ent = { name: String(e.name).trim().slice(0, 30), status: '', desc: '' }; building.entrances.push(ent); }
+      if (typeof e.status === 'string') ent.status = e.status.trim().slice(0, 60);
+      if (typeof e.desc === 'string') ent.desc = e.desc.slice(0, 200);
+    });
+    building.updatedDay = state.meta.day || 1;
+    building.updatedHour = state.meta.hour || 0;
+    building.updatedMinute = state.meta.minute || 0;
+    if (isNew) acquired.buildings.push({ name });
+    notes.push(isNew ? `解锁建筑【${name}】` : `建筑【${name}】状态更新`);
+  });
+
   return { deltas, notes, acquired };
 }
 
@@ -5316,7 +5616,7 @@ function buildPromptVars(timeCost = 0, successRate = 0, opts = {}) {
     approach: m.mode === 'high' ? '高调行事（速度快，动静大）' : '低调行事（速度慢，更隐蔽）',
     noise: m.mode === 'high' ? '高' : '低',
     commsDevice: comms ? comms.name : '无',
-    contacts: state.contacts.map(c => `${c.name}（${contactMethodLabel(c.method)}，${c.location || '地点未知'}）`).join('；') || '暂无',
+    contacts: state.contacts.map(c => `${c.name}（${contactMethodLabel(c.method)}，${c.location || '地点未知'}，好感 ${clamp(Math.round(Number(c.favor) || 50), 0, 100)}）`).join('；') || '暂无',
     knownLocations: state.map.locations.filter(l => l.known).map(l => {
       const d = distanceBetween(state.map.current, l);
       return `${l.name}(${l.x},${l.y}，距离${d}格)`;
@@ -5338,6 +5638,8 @@ function buildPromptVars(timeCost = 0, successRate = 0, opts = {}) {
     playerName: p.name,
     playerGender: p.gender || '未指定',
     playerPersonality: p.personality || '未记录',
+    playerAppearance: p.appearance || '未记录',
+    playerHobbies: (Array.isArray(p.hobbies) && p.hobbies.length) ? p.hobbies.join('、') : '无',
     playerOrigin: p.origin || '未记录',
     playerTitle: p.title,
     originDesc: p.originDesc || '',
@@ -5380,6 +5682,16 @@ function buildPromptVars(timeCost = 0, successRate = 0, opts = {}) {
     stageSociety: state.world.stage.society || '',
     events: state.world.events.slice(-8).map(e => `${e.title}（第${e.day || e.turn}天${Number.isFinite(e.hour) ? ` ${String(e.hour).padStart(2,'0')}:${String(e.minute || 0).padStart(2,'0')}` : ''}）：${e.content}`).join('；') || '暂无',
     codexTitles: state.codex.map(c => c.title).join('、') || '暂无',
+    money: Number(p.money) || 0,
+    currencyState: currencyUsable() ? '官方货币仍可用' : '官方货币已失效，只能以物易物',
+    weight: currentWeight(), weightCap: weightCap(),
+    carry: currentCarry(), carryCap: carryCap(),
+    vehicle: state.vehicle
+      ? `${state.vehicle.name}（${state.vehicle.type || '未知'}，状态 ${state.vehicle.condition}%，燃料 ${state.vehicle.fuel}%，载货 ${state.vehicle.cargo.reduce((a, it) => a + (Number(it.qty) || 0), 0)}/${state.vehicle.cargoCap || 0}）`
+      : '无',
+    buildings: state.buildings.length
+      ? state.buildings.map(b => `${b.name}：${(b.rooms || []).map(r => `${r.name}(${r.status || '未知'})`).join('、') || b.desc || ''}`).join('；')
+      : '无',
     summary: state.summary || '（故事刚刚开始）'
   };
 }
@@ -5473,7 +5785,7 @@ function buildSystemPrompt(timeCost = 0, successRate = 0, opts = {}) {
 时间：从第 ${startClock.day} 天 ${formatClock(startClock)} 开始，本回合行动耗时 ${safeCost} 分钟，结束于第 ${day} 天 ${formatClock(endClock)}。时段：${light.phase.label}；光照：${light.label}。预计成功率：${safeRate}%。
 爆发日：第 ${m.outbreakDay || 3} 天，约 ${Number.isFinite(m.outbreakHour) ? m.outbreakHour : 12}:00 前后（不要直接向玩家报出具体日期或时刻）。当前状态：${outbreakStatus}。难度：${m.difficulty}。
 世界：深秋。爆发前城市仍在运转，新闻里出现不明暴力事件；爆发后市电中断、秩序崩解。感染源不明，被咬伤 6~12 小时转化。
-玩家：${p.name}，${p.origin}，${p.title}；性别：${p.gender || '未指定'}；性格：${p.personality || '未记录'}。${p.originDesc || ''}
+玩家：${p.name}，${p.origin}，${p.title}；性别：${p.gender || '未指定'}；性格：${p.personality || '未记录'}；体貌：${p.appearance || '未记录'}；嗜好：${(Array.isArray(p.hobbies) && p.hobbies.length) ? p.hobbies.join('、') : '无'}。${p.originDesc || ''}
 HP ${p.hp}/${p.hpMax} · 饥饿 ${p.hunger}/${p.hungerMax} · 口渴 ${p.thirst}/${p.thirstMax} · 体力 ${p.sta}/${p.staMax} · 精神 ${p.spirit}/${p.spiritMax} · 理智 ${p.san}/${p.sanMax} · 感染 ${p.infection}%
 智力 ${p.intel} · 体质 ${p.con}
 技能：${state.skills.map(s => `${s.name}(Lv.${s.level})`).join('、') || '无'}
@@ -5484,11 +5796,14 @@ HP ${p.hp}/${p.hpMax} · 饥饿 ${p.hunger}/${p.hungerMax} · 口渴 ${p.thirst}
 场景：${state.scene.name} —— ${state.scene.desc}
 可前往：${(state.scene.exits || []).join('、')}
 据点储备：${(state.scene.reserves || []).map(r => `${r.name}×${r.qty}`).join('、') || '无'}
+货币：¥${Number(p.money) || 0}（${currencyUsable() ? '官方货币仍可用' : '官方货币已失效'}）；负重 ${currentWeight()}/${weightCap()}kg；携带量 ${currentCarry()}/${carryCap()}
+载具：${state.vehicle ? `${state.vehicle.name}（${state.vehicle.type || '未知'}，状态 ${state.vehicle.condition}%，燃料 ${state.vehicle.fuel}%）` : '无'}
+建筑：${state.buildings.length ? state.buildings.map(b => `${b.name}（${(b.rooms || []).map(r => `${r.name}:${r.status || '未知'}`).join('、')}）`).join('；') : '无'}
 阶段状态：环境 ${state.world.stage.environment}；物资 ${state.world.stage.supplies}；社会 ${state.world.stage.society}
 最近事件：${state.world.events.slice(-6).map(e => `${e.title}（第${e.day || e.turn}天）：${e.content}`).join('；') || '暂无'}
 行事风格：${m.mode === 'high' ? '高调（速度快，动静大）' : '低调（速度慢，隐蔽）'}
 通讯设备：${hasCommDevice() ? hasCommDevice().name : '无'}
-联系人：${state.contacts.map(c => `${c.name}（${contactMethodLabel(c.method)}，${c.location || '地点未知'}）`).join('；') || '暂无'}
+联系人：${state.contacts.map(c => `${c.name}（${contactMethodLabel(c.method)}，${c.location || '地点未知'}，好感 ${clamp(Math.round(Number(c.favor) || 50), 0, 100)}）`).join('；') || '暂无'}
 已知地点：${state.map.locations.filter(l => l.known).map(l => `${l.name}(${l.x},${l.y}，距离${distanceBetween(state.map.current, l)}格)`).join('；') || '暂无'}
 丧尸图鉴：${state.bestiary.map(b => `${b.name}（威胁${b.threat}）`).join('、') || '尚未遭遇'}
 伤情：${state.injuries.map(i => `${injuryPartLabel(i.part)}：${i.injury}（${i.severity}${i.treated ? '，已处理' : ''}${i.needed && i.needed.length ? `，需要${i.needed.join('/')}` : ''}）`).join('；') || '无'}
@@ -5504,7 +5819,7 @@ HP ${p.hp}/${p.hpMax} · 饥饿 ${p.hunger}/${p.hungerMax} · 口渴 ${p.thirst}
 5. 每3~5回合给一次可收集日志；每5~8回合触发一次周期事件并写入 addEvents；重大转折写入 addSpecialLogs；发现新地点/敌人/规则时写入 addCodex。
 6. 夜间 20:00~05:00 天色黑暗。无光源时搜索、移动、开锁几乎无法进行；手机/打火机等弱光可以勉强行动但更容易出错；强光也可能引来注意。描写要体现光线、视野和声音的变化。
 7. 装备、携带物品、情报、暂存物资分开记录。choices 的 difficulty 要有区分，至少给一个困难或危险选项，不要全部标成容易/普通。以第二人称“你”叙述，中文，压抑写实，不要爽文。
-8. 遇到愿意保持联系的具名 NPC 时写入 addContacts（method 取 phone/radio/in-person/unknown）；联系人不是队友。玩家远程联系时只消耗很短时间，不移动位置。
+8. 遇到愿意保持联系的具名 NPC 时写入 addContacts（method 取 phone/radio/in-person/unknown；appearance 写体貌，hobbies 写嗜好，favor 写好感变化正负整数、favorSet 写 0~100 绝对值，新联系人默认 50）；联系人不是队友。玩家远程联系时只消耗很短时间，不移动位置。
 9. 用 0~6 网格记录地点；发现新地点写入 addLocations（x/y 在 0~6）；前往目标时把 scene.name 设为该地点并写 x/y。每格约 500 米、步行 30 分钟。
 10. 丧尸图鉴初始为空，只有真正遭遇某类丧尸或变异体时才写入 addBestiary（name/traits/physiology/likes/threat/notes）；已解锁的普通同类用同名条目更新。遇到形态、行为或生理结构明显不同的变异体（爬行者、奔跑者、膨胀者、集群个体等），必须用新的 name 单独写入，不要合并到普通感染者条目。
 11. 高调行事更快但动静大，可能引来感染者和 NPC；低调更慢但隐蔽。本回合按该风格叙写。choices 的 timeCost 按正常步调估算，系统会自动乘行事风格系数，不要重复调整。
@@ -5515,7 +5830,7 @@ HP ${p.hp}/${p.hpMax} · 饥饿 ${p.hunger}/${p.hungerMax} · 口渴 ${p.thirst}
 16. 每回合必须输出 summary：20~50 字的一句话剧情总结，不重复判定结果、不剧透后续，也不要直接复制 narration。
 
 只输出一个 JSON 对象，不要 markdown 代码块，不要解释。格式：
-{"summary":"一句话剧情总结","narration":"第二人称描写，2-4段，用空行分隔","dialogue":[{"speaker":"说话者","text":"台词"}],"stateChanges":{"hp":0,"hunger":-2,"thirst":-3,"sta":-5,"spirit":0,"san":0,"infection":0,"addItems":[{"name":"","qty":1,"desc":"","consumable":true}],"removeItems":[{"name":"","qty":1}],"addEquipment":[{"name":"","desc":"","condition":"90%"}],"removeEquipment":[{"name":""}],"addIntel":["情报"],"addStash":[{"location":"","desc":"","items":["物品×数量"]}],"addSkills":[{"name":"","level":1,"desc":""}],"skillExp":[{"name":"","exp":10}],"scene":{"name":"","desc":"","exits":[],"x":3,"y":3,"reserves":[{"name":"","qty":1}]},"stage":{"environment":"","supplies":"","society":""},"addEvents":[{"title":"","content":"","permanent":false}],"addSpecialLogs":[{"title":"","content":""}],"addCodex":[{"category":"","title":"","content":""}],"addContacts":[{"name":"","note":"","location":"","method":"phone"}],"addLocations":[{"name":"","x":3,"y":3,"desc":"","known":true}],"addBestiary":[{"name":"","traits":"","physiology":"","likes":"","threat":"未知","notes":""}],"addInjuries":[{"part":"leftLeg","injury":"","severity":"中度","bleeding":false,"needed":["纱布","碘伏"],"effect":""}],"removeInjuries":[{"part":"leftLeg","injury":""}],"addLogs":[{"title":"","content":"","source":""}]},"choices":[{"text":"行动描述，不超过20字","timeCost":15,"difficulty":"普通","stat":"智力","skill":"观察","gear":"手电"}]}`;
+{"summary":"一句话剧情总结","narration":"第二人称描写，2-4段，用空行分隔","dialogue":[{"speaker":"说话者","text":"台词"}],"stateChanges":{"hp":0,"hunger":-2,"thirst":-3,"sta":-5,"spirit":0,"san":0,"infection":0,"money":0,"addItems":[{"name":"","qty":1,"desc":"","consumable":true}],"removeItems":[{"name":"","qty":1}],"addEquipment":[{"name":"","desc":"","condition":"90%"}],"removeEquipment":[{"name":""}],"addIntel":["情报"],"addStash":[{"location":"","desc":"","items":["物品×数量"]}],"addSkills":[{"name":"","level":1,"desc":""}],"skillExp":[{"name":"","exp":10}],"scene":{"name":"","desc":"","exits":[],"x":3,"y":3,"reserves":[{"name":"","qty":1}]},"stage":{"environment":"","supplies":"","society":""},"addEvents":[{"title":"","content":"","permanent":false}],"addSpecialLogs":[{"title":"","content":""}],"addCodex":[{"category":"","title":"","content":""}],"addContacts":[{"name":"","note":"","location":"","method":"phone","appearance":"","hobbies":[],"favor":0}],"addLocations":[{"name":"","x":3,"y":3,"desc":"","known":true}],"addBestiary":[{"name":"","traits":"","physiology":"","likes":"","threat":"未知","notes":""}],"addInjuries":[{"part":"leftLeg","injury":"","severity":"中度","bleeding":false,"needed":["纱布","碘伏"],"effect":""}],"removeInjuries":[{"part":"leftLeg","injury":""}],"addLogs":[{"title":"","content":"","source":""}],"vehicle":{"name":"","type":"","condition":90,"fuel":50,"cargoCap":200,"weightCap":300,"cargo":[{"name":"","qty":1,"weight":1}]},"addBuildings":[{"name":"","desc":"","rooms":[{"name":"","status":"","desc":""}],"entrances":[{"name":"","status":"","desc":""}]}],"updateBuildings":[{"name":"","desc":"","rooms":[{"name":"","status":"","desc":""}],"entrances":[{"name":"","status":"","desc":""}]}]},"choices":[{"text":"行动描述，不超过20字","timeCost":15,"difficulty":"普通","stat":"智力","skill":"观察","gear":"手电"}]}`;
 }
 
 function buildHistoryMessages() {
@@ -5941,6 +6256,8 @@ function normalizeCustomOrigin(raw, description) {
     title,
     tagline: text(r.tagline, 20, '按自己的方式活下去。'),
     blurb,
+    appearance: text(r.appearance, 120, ''),
+    hobbies: arr(r.hobbies).map(x => text(x, 20)).filter(Boolean).slice(0, 6),
     icon: ICONS.plus,
     startHour,
     startMinute,
@@ -6000,6 +6317,8 @@ function createGame(originId, name, diffKey, customOrigin, gender = '未指定',
     originDesc: o.blurb,
     gender: GENDERS.includes(String(gender)) ? String(gender) : '未指定',
     personality: String(personality || '').trim().slice(0, 40),
+    appearance: String(o.appearance || '').trim().slice(0, 120),
+    hobbies: Array.isArray(o.hobbies) ? o.hobbies.map(h => String(h).trim().slice(0, 20)).filter(Boolean).slice(0, 8) : [],
     hp: 100, hpMax: 100,
     sta: o.stats.sta, staMax: 100,
     spirit: o.stats.spirit, spiritMax: 100,
@@ -6137,6 +6456,8 @@ async function saveToFolder(silent) {
       ['场景与地图.txt', txtScene(), true],
       ['地点坐标.txt', txtMap(), true],
       ['联系人.txt', txtContacts(), true],
+      ['载具.txt', txtVehicle(), true],
+      ['建筑.txt', txtBuilding(), true],
       ['世界概况.txt', txtWorld(), true],
       ['收集日志.txt', txtLogs(), true],
       ['图鉴.txt', txtCodex(), true],
@@ -6223,6 +6544,8 @@ function txtRole() {
     `姓名：${p.name}`,
     `性别：${p.gender || '未指定'}`,
     `性格：${p.personality || '未记录'}`,
+    `体貌：${p.appearance || '未记录'}`,
+    `嗜好：${(Array.isArray(p.hobbies) && p.hobbies.length) ? p.hobbies.join('、') : '无'}`,
     `出身：${p.origin || '未记录'}`,
     `身份：${p.title || '未记录'}`,
     `简介：${p.originDesc || '—'}`,
@@ -6247,6 +6570,12 @@ function txtRole() {
     '【属性组】',
     `智力：${p.intel}`,
     `体质：${p.con}`,
+    '',
+    '【资源与负重】',
+    `货币：¥${Number(p.money) || 0}（${currencyUsable() ? '官方货币可用' : '官方货币已失效'}）`,
+    `负重：${currentWeight()} / ${weightCap()} kg${currentWeight() > weightCap() ? '（超重）' : ''}`,
+    `携带量：${currentCarry()} / ${carryCap()}${currentCarry() > carryCap() ? '（超出）' : ''}`,
+    `载具：${state.vehicle ? `${state.vehicle.name}（${state.vehicle.type || '未知'}，状态 ${state.vehicle.condition}%，燃料 ${state.vehicle.fuel}%）` : '无'}`,
     '',
     '【技能列表】',
     ...(state.skills.length
@@ -6447,12 +6776,78 @@ function txtContacts() {
   ];
   if (!state.contacts.length) lines.push('  （还没有联系人）');
   state.contacts.forEach((c, i) => {
+    const favor = clamp(Math.round(Number(c.favor) || 50), 0, 100);
     lines.push(`${String(i + 1).padStart(2, '0')}. ${c.name}  [${contactMethodLabel(c.method)}]`);
     if (c.note) lines.push(`    备注：${c.note}`);
+    if (c.appearance) lines.push(`    体貌：${c.appearance}`);
+    if (c.hobbies && c.hobbies.length) lines.push(`    嗜好：${c.hobbies.join('、')}`);
+    lines.push(`    好感度：${favor}（${favorLabel(favor)}）`);
     lines.push(`    最后已知地点：${c.location || '未知'}`);
     lines.push(`    最近联系/遇到：第 ${c.lastDay || 1} 天 ${String(c.lastHour || 0).padStart(2, '0')}:${String(c.lastMinute || 0).padStart(2, '0')}`);
     const device = deviceForContact(c);
     lines.push(`    远程联系：${device ? `可用（${device.name}）` : (c.method === 'in-person' ? '仅当面' : '缺少匹配设备')}`);
+    lines.push('');
+  });
+  lines.push('═══════════════════════════════════════', '');
+  return lines.join('\n');
+}
+
+function txtVehicle() {
+  const v = state.vehicle;
+  const lines = [
+    '═══════════════════════════════════════',
+    '           末 日 回 响 · 载 具',
+    '═══════════════════════════════════════',
+    `导出时间：${nowText()}`,
+    ''
+  ];
+  if (!v) {
+    lines.push('  （没有载具）');
+  } else {
+    const cargoUnits = v.cargo.reduce((a, it) => a + (Number(it.qty) || 0), 0);
+    const cargoW = v.cargo.reduce((a, it) => a + (Number(it.weight) || 1) * (Number(it.qty) || 0), 0);
+    lines.push(`名称：${v.name}`);
+    lines.push(`类型：${v.type || '未知'}`);
+    lines.push(`状态：${v.condition}%`);
+    lines.push(`燃料：${v.fuel}%`);
+    lines.push(`载货量：${cargoUnits} / ${v.cargoCap || 0}`);
+    lines.push(`载重：${cargoW} / ${v.weightCap || 0} kg`);
+    lines.push('');
+    lines.push('【载货清单】');
+    if (v.cargo.length) {
+      v.cargo.forEach(it => lines.push(`  · ${it.name} ×${it.qty}（${it.weight || 1} kg/件）`));
+    } else {
+      lines.push('  （货厢是空的）');
+    }
+  }
+  lines.push('═══════════════════════════════════════', '');
+  return lines.join('\n');
+}
+
+function txtBuilding() {
+  const lines = [
+    '═══════════════════════════════════════',
+    '           末 日 回 响 · 建 筑',
+    '═══════════════════════════════════════',
+    `导出时间：${nowText()}`,
+    `已解锁建筑：${state.buildings.length} 处`,
+    ''
+  ];
+  if (!state.buildings.length) {
+    lines.push('  （还没有解锁建筑）');
+  }
+  state.buildings.forEach(b => {
+    lines.push(`■ ${b.name}`);
+    lines.push(`  更新：第 ${b.updatedDay || 1} 天 ${String(b.updatedHour || 0).padStart(2, '0')}:${String(b.updatedMinute || 0).padStart(2, '0')}`);
+    if (b.desc) lines.push(`  状态：${b.desc}`);
+    if (b.rooms && b.rooms.length) {
+      lines.push('  房间：');
+      b.rooms.forEach(r => lines.push(`    · ${r.name}（${r.status || '未知'}）${r.desc ? '：' + r.desc : ''}`));
+    }
+    if (b.entrances && b.entrances.length) {
+      lines.push('  出入口：');
+      b.entrances.forEach(e => lines.push(`    · ${e.name}（${e.status || '未知'}）${e.desc ? '：' + e.desc : ''}`));
+    }
     lines.push('');
   });
   lines.push('═══════════════════════════════════════', '');
@@ -6692,6 +7087,8 @@ function openProfile() {
   const p = state.player || {};
   const currentGender = GENDERS.includes(String(p.gender)) ? String(p.gender) : '未指定';
   const currentPersonality = String(p.personality || '');
+  const currentAppearance = String(p.appearance || '');
+  const currentHobbies = Array.isArray(p.hobbies) ? p.hobbies.join('、') : '';
   showModal('角色档案', `
     <div class="form-group">
       <label>性别</label>
@@ -6706,7 +7103,15 @@ function openProfile() {
         ${PERSONA_PRESETS.map(x => `<button type="button" class="persona-chip ${x === currentPersonality ? 'active' : ''}" data-persona="${x}">${x}</button>`).join('')}
       </div>
     </div>
-    <p class="hint">性别与性格会写入角色状态与存档，并用于 AI 叙事中的称谓与行为描写。</p>
+    <div class="form-group">
+      <label for="profile-appearance">外观体貌</label>
+      <textarea id="profile-appearance" rows="2" maxlength="120" autocomplete="off" placeholder="例如：身高约一米七五，短发，左眉有一道旧疤">${esc(currentAppearance)}</textarea>
+    </div>
+    <div class="form-group">
+      <label for="profile-hobbies">兴趣嗜好 <span class="setup-hint">用顿号或逗号分隔</span></label>
+      <input id="profile-hobbies" maxlength="120" autocomplete="off" value="${esc(currentHobbies)}" placeholder="例如：听广播、收集打火机、下棋">
+    </div>
+    <p class="hint">性别、性格、体貌与嗜好会写入角色状态与存档，并用于 AI 叙事中的描写。</p>
     <div class="form-actions">
       <button class="btn primary" id="profile-save">保存档案</button>
     </div>
@@ -6738,6 +7143,8 @@ function openProfile() {
     $('profile-save').addEventListener('click', () => {
       state.player.gender = gender;
       state.player.personality = $('profile-personality').value.trim().slice(0, 40);
+      state.player.appearance = $('profile-appearance').value.trim().slice(0, 120);
+      state.player.hobbies = $('profile-hobbies').value.split(/[、,，;；]/).map(h => h.trim().slice(0, 20)).filter(Boolean).slice(0, 8);
       saveLocal();
       const scrollTop = $('story-scroll').scrollTop;
       renderAll();
