@@ -3506,14 +3506,30 @@ function normalizeState(s) {
   scene.reserves = Array.isArray(scene.reserves) ? scene.reserves : [];
   const turns = Array.isArray(s.turns) && s.turns.length ? s.turns : [makePlaceholderIntro()];
   let contacts = (Array.isArray(s.contacts) ? s.contacts : []).map(normalizeContact).filter(c => c.name);
-  // 兼容旧存档：开局本应带有熟人联系方式，若为空则按出身补上
+  let items = Array.isArray(s.items) ? s.items : d.items;
+  // 兼容旧存档：开局本应带有熟人联系方式，若为空则按出身补上，并确保有手机
   if (!contacts.length && s.player && s.player.originId && ORIGIN_EXTRAS[s.player.originId]) {
     contacts = ORIGIN_EXTRAS[s.player.originId].contacts.map(normalizeContact).filter(c => c.name);
+    if (!items.some(i => /手机|移动电话|卫星电话/.test(String(i && i.name || '')))) {
+      items = items.concat([{ name: '手机', qty: 1, desc: '屏幕有道裂纹，电量还够。', consumable: false }]);
+    }
   }
   const bestiary = (Array.isArray(s.bestiary) ? s.bestiary : []).map(normalizeBestiary).filter(b => b.name);
   const injuries = (Array.isArray(s.injuries) ? s.injuries : []).map(normalizeInjury).filter(i => i.injury);
   const vehicle = normalizeVehicle(s.vehicle);
-  const buildings = (Array.isArray(s.buildings) ? s.buildings : []).map(normalizeBuilding).filter(b => b.name);
+  let buildings = (Array.isArray(s.buildings) ? s.buildings : []).map(normalizeBuilding).filter(b => b.name);
+  // 兼容旧存档：没有建筑记录时，把当前场景登记为「当前身处建筑」，便于「建筑」菜单查看
+  if (!buildings.length && scene.name && scene.name !== '—') {
+    buildings = [{
+      name: scene.name,
+      desc: scene.desc || '',
+      rooms: [],
+      entrances: (scene.exits || []).map(e => ({ name: String(e).slice(0, 30), status: '未知', desc: '' })),
+      updatedDay: meta.day || 1,
+      updatedHour: meta.hour || 0,
+      updatedMinute: meta.minute || 0
+    }];
+  }
   const map = normalizeMap(s.map, scene);
   const codexRaw = Array.isArray(s.codex) && s.codex.length ? s.codex : defaultCodex();
   const codex = codexRaw.filter(c => (c.category || '') !== '感染者特征');
@@ -3522,7 +3538,7 @@ function normalizeState(s) {
     meta,
     player,
     skills: Array.isArray(s.skills) ? s.skills : d.skills,
-    items: Array.isArray(s.items) ? s.items : d.items,
+    items,
     equipment: Array.isArray(s.equipment) ? s.equipment : [],
     intel: Array.isArray(s.intel) ? s.intel : [],
     stash: Array.isArray(s.stash) ? s.stash : [],
@@ -6380,7 +6396,8 @@ const ORIGIN_EXTRAS = {
     contacts: [
       { name: '站点主管', note: '对你还算客气，手上有一片区的派送名单。', location: '城东快递站点', method: 'phone', favor: 60 },
       { name: '室友阿凯', note: '跑外卖的，作息和你错开。', location: '城东出租屋', method: 'phone', favor: 65 }
-    ]
+    ],
+    vehicle: { name: '电动车', type: '电动车', condition: 85, fuel: 60, cargoCap: 40, weightCap: 30 }
   },
   nurse: {
     money: 180,
@@ -6396,7 +6413,9 @@ const ORIGIN_EXTRAS = {
     contacts: [
       { name: '队友老陈', note: '昨晚出警还没回来。', location: '城南消防站', method: 'radio', favor: 75 },
       { name: '妻子', note: '在城西上班。', location: '城西', method: 'phone', favor: 90 }
-    ]
+    ],
+    items: [{ name: '对讲机', qty: 1, desc: '站里配的，频道还通。', consumable: false }],
+    vehicle: { name: '消防车', type: '消防车', condition: 90, fuel: 50, cargoCap: 800, weightCap: 2000 }
   },
   clerk: {
     money: 60,
@@ -6428,7 +6447,8 @@ const ORIGIN_EXTRAS = {
     contacts: [
       { name: '老板', note: '今天没来，电话也不接。', location: '顺达汽修厂', method: 'phone', favor: 50 },
       { name: '工友小赵', note: '刚来半年，手还生。', location: '城南', method: 'phone', favor: 60 }
-    ]
+    ],
+    vehicle: { name: '旧面包车', type: '面包车', condition: 70, fuel: 40, cargoCap: 300, weightCap: 600 }
   },
   streamer: {
     money: 90,
@@ -6500,7 +6520,7 @@ function createGame(originId, name, diffKey, customOrigin, gender = '未指定',
   });
 
   fresh.skills = o.skills.map(s => Object.assign({}, s, { exp: 0 }));
-  fresh.items = o.items.map(i => Object.assign({}, i));
+  fresh.items = o.items.concat((extra && extra.items) || []).map(i => Object.assign({}, i));
   fresh.equipment = o.equipment.map(g => Object.assign({}, g));
   // 起始携带量不超过上限（自定义出身可能生成较多物品）
   const bagCount = (arr) => arr.filter(x => /背包|布袋|腰包|挎包|旅行包|登山包|邮差包/.test(String(x && x.name || ''))).length;
@@ -6512,6 +6532,22 @@ function createGame(originId, name, diffKey, customOrigin, gender = '未指定',
     startCarry -= cut;
     if (fresh.items[i].qty <= 0) fresh.items.splice(i, 1);
   }
+  // 确保开局有手机（否则电话类熟人联系不上）
+  if (!fresh.items.some(i => /手机|移动电话|卫星电话/.test(String(i.name)))) {
+    fresh.items.push({ name: '手机', qty: 1, desc: '屏幕有道裂纹，电量还够。', consumable: false });
+  }
+  // 开局载具
+  fresh.vehicle = extra && extra.vehicle ? normalizeVehicle(extra.vehicle) : null;
+  // 当前身处建筑：把起始场景登记为建筑（房间/出入口），便于「建筑」菜单查看
+  fresh.buildings = [{
+    name: o.scene.name,
+    desc: o.scene.desc,
+    rooms: [],
+    entrances: (o.scene.exits || []).map(e => ({ name: String(e).slice(0, 30), status: '未知', desc: '' })),
+    updatedDay: 1,
+    updatedHour: start.hour || 0,
+    updatedMinute: start.minute || 0
+  }];
   fresh.intel = o.intel.slice();
   fresh.stash = o.stash.map(s => Object.assign({}, s, { items: (s.items || []).slice() }));
   fresh.scene = {
