@@ -3494,12 +3494,21 @@ function currencyUsable() {
 }
 
 /* 负重 / 携带量 */
+// 背包类物品识别：先按常见背包名匹配，再兜底匹配「包 / 袋」，但排除食物、药品、包裹等
+const BAG_NAME_RE = /(背包|背囊|布袋|腰包|挎包|斜挎|旅行包|旅行袋|旅行箱|行李箱|登山包|邮差包|双肩包|书包|行军包|战术包|帆布包|工具包|手提包|手提袋|行李袋|收纳袋|储物袋|腰袋|水袋|麻袋|蛇皮袋)/;
+const NON_BAG_RE = /(面包|包子|红包|药包|包裹|烟包|茶包|暖宝宝|垃圾袋|药袋|输液袋|睡袋|沙袋|保鲜袋|密封袋)/;
+
+function isBagName(name) {
+  const n = String(name == null ? '' : name).trim();
+  if (!n) return false;
+  if (BAG_NAME_RE.test(n)) return true;
+  if (NON_BAG_RE.test(n)) return false;
+  return /[包袋]/.test(n);
+}
+
 function bagBonus() {
   const all = [...(state.items || []), ...(state.equipment || [])];
-  return all.reduce((sum, x) => {
-    const n = String(x && x.name || '');
-    return /背包|布袋|腰包|挎包|旅行包|登山包|邮差包/.test(n) ? sum + 4 : sum;
-  }, 0);
+  return all.reduce((sum, x) => sum + (isBagName(x && x.name) ? 4 : 0), 0);
 }
 function carryCap() { return 12 + bagBonus(); }
 function currentCarry() { return (state.items || []).reduce((a, it) => a + (Number(it.qty) || 0), 0); }
@@ -3721,7 +3730,9 @@ function renderStats() {
   }
   const carryEl = $('v-carry');
   if (carryEl) {
+    const bonus = bagBonus();
     carryEl.textContent = `${currentCarry()} / ${carryCap()}`;
+    carryEl.title = bonus > 0 ? `基础 12 + 背包加成 ${bonus}` : '基础 12；装备背包类物品可 +4';
     carryEl.style.color = currentCarry() > carryCap() ? '#ff8b90' : '';
   }
 
@@ -5435,7 +5446,7 @@ function applyStateChanges(sc, outcome) {
   (sc.addItems || []).forEach(it => {
     if (!it || !it.name) return;
     let qty = Number(it.qty) || 1;
-    const isBag = /背包|布袋|腰包|挎包|旅行包|登山包|邮差包/.test(String(it.name));
+    const isBag = isBagName(it.name);
     const room = carryCap() + (isBag ? 4 : 0) - currentCarry();
     if (room <= 0) {
       notes.push(`携带量已满（${currentCarry()}/${carryCap()}），装不下【${it.name}】`);
@@ -6641,7 +6652,7 @@ function createGame(originId, name, diffKey, customOrigin, gender = '未指定',
   fresh.items = o.items.concat((extra && extra.items) || []).map(i => Object.assign({}, i));
   fresh.equipment = o.equipment.map(g => Object.assign({}, g));
   // 起始携带量不超过上限（自定义出身可能生成较多物品）
-  const bagCount = (arr) => arr.filter(x => /背包|布袋|腰包|挎包|旅行包|登山包|邮差包/.test(String(x && x.name || ''))).length;
+  const bagCount = (arr) => arr.filter(x => isBagName(x && x.name)).length;
   const startCap = 12 + (bagCount(fresh.items) + bagCount(fresh.equipment)) * 4;
   let startCarry = fresh.items.reduce((a, b) => a + (Number(b.qty) || 0), 0);
   for (let i = fresh.items.length - 1; i >= 0 && startCarry > startCap; i--) {
