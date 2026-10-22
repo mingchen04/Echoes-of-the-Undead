@@ -3040,41 +3040,35 @@ function outcomeBaseSuccess(outcome) {
 function outcomeGuidance(outcome) {
   const key = outcome.key;
   const rate = Number(outcome.rate) || 0;
+  const roll = Number(outcome.roll) || 0;
   const mult = Number(outcome.multiplier) || 1;
   if (key === 'criticalSuccess') {
-    return `大成功：底判成功且命运骰极佳，本回合收益按 ×${mult} 增幅——基础 1 份放大成 ${mult} 份（物资数量、情报条数、时间节省、发现价值都按此结算），可再附带一个额外优势。`;
+    return `大成功：底判成功且掷出 ${roll} 点，收益按 ×${mult} 增幅——基础 1 份变 ${mult} 份（物资数量、情报条数、时间节省、发现价值都按此放大），可再附带一个额外优势。`;
   }
   if (key === 'minorSuccess') {
-    return '小成功：底判成功但命运骰很差，目标仍可达成，收益减半/按最低档结算；绝对不得造成伤害、感染、丢失已有物资或暴露行踪。';
+    return `小成功：底判成功但只掷出 ${roll} 点，收益 ×${mult}，明显偏少但仍为正收益；绝不得造成伤害、感染、丢失已有物资或暴露行踪。`;
   }
   if (key === 'success') {
-    return '成功：按预期达成目标。';
+    return `成功：底判成功，掷出 ${roll} 点，收益 ×${mult}（1 份变 ${mult} 份）。`;
   }
   if (key === 'criticalFail') {
     if (rate >= 75) {
-      return '大失败：底判失败且命运骰极差，但本轮成功率很高，实际后果封顶：最多轻微擦伤、少量物资损失或尴尬，不放大伤害、不致死。';
+      return `大失败：底判失败且只掷出 ${roll} 点，但本轮成功率很高，实际后果封顶：最多轻微擦伤、少量物资损失或尴尬，不放大、不致死。`;
     }
-    return `大失败：底判失败且命运骰极差，负面后果按 ×${mult} 增幅——基础 -1 放大成 -${mult}（伤害、丢失物资、暴露位置同理）；行动高危时可以重伤、致命伤甚至死亡（HP 归零）。`;
+    return `大失败：底判失败且掷出 ${roll} 点，代价按 ×${mult} 增幅——基础 -1 变 -${mult}（伤害、丢失数量、受伤范围同理）；行动高危时可以重伤、致命伤甚至死亡（HP 归零）。`;
   }
   if (key === 'minorFail') {
-    return '小失败：底判失败，但命运骰极佳，失败只保留最低代价（例如 -1），不放大伤害、损失或伤势，可留一点意外线索。';
+    return `小失败：底判失败但掷出 ${roll} 点，代价 ×${mult}，基本保持最低档（-1 仍是 -1），不放大。`;
   }
-  return rate >= 50 ? '失败：目标没有达成，代价有限。' : '失败：目标没有达成，并付出明显代价。';
+  return `失败：底判失败，掷出 ${roll} 点，代价 ×${mult}。`;
 }
 
-// 两段式判定：先按成功率掷判定骰定成败，再掷命运骰做「增幅」。
-// 命运骰 1~10 是负面增幅档、90~100 是正面增幅档，增幅只朝底判结果的方向生效：
-// 成功 → 收益放大或减半，绝不产生负面；失败 → 代价放大（1~10 档）或维持最低（90~100 档）。
+// 两段式判定：先按成功率掷判定骰定成败，再掷命运骰——掷出的点数本身就是本回合的增幅倍数。
+// 底判成功：收益 × 点数（1~100 倍）。
+// 底判失败：代价 × (100 ÷ 点数)，点数越低代价越大（1 点 = ×100，100 点 ≈ ×1 即不放大）。
 function outcomeMultiplier(roll, baseSuccess) {
-  if (baseSuccess) {
-    if (roll >= 95) return 100;
-    if (roll >= CRIT_SUCCESS_ROLL) return 10;
-    if (roll <= CRIT_FAIL_ROLL) return 0.5;
-    return 1;
-  }
-  if (roll <= 5) return 100;
-  if (roll <= CRIT_FAIL_ROLL) return 10;
-  return 1;
+  if (baseSuccess) return roll;
+  return Math.max(1, Math.round(100 / Math.max(1, roll)));
 }
 
 function rollOutcome(rate) {
@@ -3100,8 +3094,8 @@ function rollOutcome(rate) {
 
 function outcomeAmpText(outcome) {
   const mult = Number(outcome && outcome.multiplier) || 1;
-  if (mult === 1) return '';
-  return mult < 1 ? ' · 收益 ×0.5' : ` · 增幅 ×${mult}`;
+  if (mult <= 1) return '';
+  return ` · 增幅 ×${mult}`;
 }
 
 function outcomeClass(key) {
@@ -5963,14 +5957,11 @@ HP ${p.hp}/${p.hpMax} · 饥饿 ${p.hunger}/${p.hungerMax} · 口渴 ${p.thirst}
 11. 高调行事更快但动静大，可能引来感染者和 NPC；低调更慢但隐蔽。本回合按该风格叙写。choices 的 timeCost 按正常步调估算，系统会自动乘行事风格系数，不要重复调整。
 12. 玩家受伤时写入 addInjuries：part 只能是 head / torso / leftArm / rightArm / leftLeg / rightLeg，并写清 injury、severity、bleeding、needed、effect。不同部位影响不同行动，系统会按部位扣成功率，叙事要体现具体不便。
 13. 治疗只在玩家确实使用正确药物时发生：用 removeItems 消耗药物，并用同名 addInjuries 更新 treated/severity，或用 removeInjuries 移除。没有药物不能凭空治愈。本轮治疗不是“无”时优先结算。
-14. 本回合判定已由系统两段掷骰决定，不得改写：先按成功率掷判定骰定成败，再掷命运骰做增幅（≤10 是负面增幅档，≥90 是正面增幅档）。增幅只朝底判结果的方向生效：
-    · 底判成功 + 命运骰≥90 → 大成功：收益按 ×10 增幅（95 以上 ×100），基础 1 份变 10 或 100 份，物资数量、情报条数、时间节省、发现价值都要写进 stateChanges。
-    · 底判成功 + 命运骰≤10 → 小成功：目标达到但收益减半/按最低档，绝不产生伤害、感染、丢失已有物资或暴露行踪。
-    · 底判成功 + 其余 → 成功：正常结算。
-    · 底判失败 + 命运骰≤10 → 大失败：负面按 ×10 增幅（5 以下 ×100），基础 -1 变成 -10 或 -100（伤害、丢失数量、受伤范围都放大），可以重伤乃至死亡。
-    · 底判失败 + 命运骰≥90 → 小失败：代价压在最低档（如 -1），不放大。
-    · 其余 → 失败：正常代价。
-    大失败且成功率高（>=75）时实际后果封顶为轻微擦伤/小损失，不能重伤、致残或死亡。所有倍数必须体现在 stateChanges 数值与叙事里。
+14. 本回合判定已由系统两段掷骰决定，不得改写：先按成功率掷判定骰定成败，再掷命运骰——掷出的点数就是本回合的增幅倍数（1~100）。
+    · 底判成功：收益 = 基础值 × 点数（1 份变 10 份、变 100 份都正常）；点数 90~100 记大成功，1~10 记小成功，其余记成功。成功回合绝不产生伤害、感染、丢失已有物资或暴露行踪。
+    · 底判失败：代价 = 基础值 × (100 ÷ 点数)，点数越低代价越重（1 点≈×100，10 点≈×10，90 点以上≈×1 保持最低代价）；点数 1~10 记大失败，90~100 记小失败，其余记失败。
+    增幅必须落在 stateChanges 的数值与叙事里（伤害、物资数量、损失、时间都要体现）。
+    大失败且成功率高（>=75）时实际后果封顶为轻微擦伤/小损失，不能重伤、致残或死亡。
 15. HP 归零或感染度达到 100 即终局；饥饿或口渴归零后进入 3 回合衰竭倒计时，倒计时内进食/饮水可解除，归零同样终局。若判定允许死亡，用 hp 负值和致命伤表现，不要假死、强行救回或无代价复生。
 16. 每回合必须输出 summary：20~50 字的一句话剧情总结，不重复判定结果、不剧透后续，也不要直接复制 narration。
 17. 外貌与癖好在选出身时已设定，之后只随剧情与行动变化：受伤留疤、染血、换装、消瘦写 appearance（一句 60 字内的追加描述）；养成新习惯写 addHobbies（1~2 个短词）。不要每回合都改。
