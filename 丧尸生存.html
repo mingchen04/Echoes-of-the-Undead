@@ -3505,7 +3505,11 @@ function normalizeState(s) {
   scene.exits = Array.isArray(scene.exits) ? scene.exits : [];
   scene.reserves = Array.isArray(scene.reserves) ? scene.reserves : [];
   const turns = Array.isArray(s.turns) && s.turns.length ? s.turns : [makePlaceholderIntro()];
-  const contacts = (Array.isArray(s.contacts) ? s.contacts : []).map(normalizeContact).filter(c => c.name);
+  let contacts = (Array.isArray(s.contacts) ? s.contacts : []).map(normalizeContact).filter(c => c.name);
+  // 兼容旧存档：开局本应带有熟人联系方式，若为空则按出身补上
+  if (!contacts.length && s.player && s.player.originId && ORIGIN_EXTRAS[s.player.originId]) {
+    contacts = ORIGIN_EXTRAS[s.player.originId].contacts.map(normalizeContact).filter(c => c.name);
+  }
   const bestiary = (Array.isArray(s.bestiary) ? s.bestiary : []).map(normalizeBestiary).filter(b => b.name);
   const injuries = (Array.isArray(s.injuries) ? s.injuries : []).map(normalizeInjury).filter(i => i.injury);
   const vehicle = normalizeVehicle(s.vehicle);
@@ -6013,6 +6017,8 @@ function openSetup(opts = {}) {
     name: '',
     gender: GENDERS.includes(seed.gender) ? seed.gender : '未指定',
     personality: typeof seed.personality === 'string' ? seed.personality.slice(0, 40) : '',
+    appearance: '',
+    hobbies: '',
     cancellable: opts.cancellable != null ? !!opts.cancellable : inGame,
     customDesc: '',
     customOrigin: null,
@@ -6082,9 +6088,9 @@ function syncSetupIdentity() {
   const pInput = $('setup-personality');
   if (pInput) pInput.value = setupState.personality;
   const aInput = $('setup-appearance');
-  if (aInput) aInput.value = setupState.appearance;
+  if (aInput) aInput.value = setupState.appearance || '';
   const hInput = $('setup-hobbies');
-  if (hInput) hInput.value = setupState.hobbies;
+  if (hInput) hInput.value = setupState.hobbies || '';
   document.querySelectorAll('#gender-row .gender-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.gender === setupState.gender);
   });
