@@ -77,10 +77,12 @@ HP {{hp}}/{{hpMax}} · 饥饿 {{hunger}}/{{hungerMax}} · 口渴 {{thirst}}/{{th
 {{outcomeGuidance}}
 
 【联系人规则】
-- 遇到有名字、愿意保持联系的 NPC 时，写入 addContacts：{"name","note","location","method","appearance","hobbies","favor"}，method 取 phone / radio / in-person / unknown。联系人不是队友，不能替玩家行动。
+- 联系人的「名称」和「关系」必须分开：name 写全名（如「王二麻」），alias 写小名/称呼（如「小王」，没有就留空字符串），relation 写关系（如「同事」「邻居」「母亲」），note 写备注与印象。
+- 遇到有名字、愿意保持联系的 NPC 时，写入 addContacts：{"name","alias","relation","note","location","method","appearance","hobbies","favor"}，method 取 phone / radio / in-person / unknown。联系人不是队友，不能替玩家行动。
+- 对话 speaker 和 choices 里提到联系人时，用小名（全名）格式，如「小王（王二麻）」；没有小名时直接用全名。联系人面板只显示全名与关系，不要把「小王」这种小名当成全名写进 name。
 - appearance 是 NPC 的外观体貌（一句话，40 字内），hobbies 是兴趣嗜好（1~3 个短词）。favor 是本次互动带来的好感度变化（正负整数，如 +5 / -10），新联系人默认从 50 开始；favorSet 是直接设为某个 0~100 的绝对值（需要彻底改观时用）。
 - 玩家用手机、无线电或对讲机远程联系时，交流只消耗很短时间，不要移动玩家的位置；让联系人提供情报、请求或改变态度。
-- 联系人地点变化时，用同名 addContacts 更新。
+- 联系人地点、关系或小名变化时，用同名 addContacts 更新。
 
 【地点与移动】
 - 用 0~6 的网格坐标记录地点。玩家当前位置：{{mapCurrent}}。
@@ -108,6 +110,8 @@ HP {{hp}}/{{hpMax}} · 饥饿 {{hunger}}/{{hungerMax}} · 口渴 {{thirst}}/{{th
 【玩家本回合行动】
 {{action}}
 
+（只执行这条行动。玩家没有写到的搜刮、拿取、使用库存物品、进食饮水、交易、花钱、移动、休息，一律不要发生；这些只能出现在 choices 里让玩家选择。）
+
 【核心规则】
 1. 游戏开始时玩家没有任何队友。NPC 可以出现，但必须经过剧情认识、试探、交换或共同脱险后才可能同行，不能凭空成为队友，也不能替玩家做决定。
 2. 每回合结算饥饿与口渴。时间流逝、奔跑、负重、战斗会加快消耗；进食饮水才能恢复。不要每回合都写“刚好找到食物”。
@@ -131,12 +135,14 @@ HP {{hp}}/{{hpMax}} · 饥饿 {{hunger}}/{{hungerMax}} · 口渴 {{thirst}}/{{th
 19. 载具规则：玩家获得、更换或丢弃载具时写入 vehicle（丢弃写 vehicle:null）。载具有 name、type、condition（状态 0~100）、fuel（燃料 0~100）、cargoCap（载货量）、weightCap（载重 kg）、cargo（货物清单，物品带 weight 公斤）。载具能帮玩家携带更多物资，但也需要燃料和维护。
 20. 建筑规则：玩家解锁或加固某个建筑时，首次写入 addBuildings，之后状态变化写入 updateBuildings。每个建筑含 desc（整体状态）、rooms（房间：name/status/desc）、entrances（出入口：name/status/desc）。建筑的房间和出入口会随时间和玩家互动变化（清理、封堵、破坏、囤物资都要反映到对应房间/出入口的 status）。
 21. 外貌与癖好：玩家在选择出身时已设定，之后只能随剧情与行动变化。只有发生可观察的变化时才写入——受伤留疤、染血、换装、消瘦等写 appearance（一句 60 字内的追加描述，如「左眉多了道疤」），养成新习惯或发现旧爱好写 addHobbies（1~2 个短词）。不要每回合都改，也不要把外貌/癖好当成战斗属性。
+22. 玩家自主：玩家没有在【玩家本回合行动】里明确要求时，不得替玩家搜刮、拿取、使用库存物品、进食饮水、交易、花钱、移动、休息或做任何决定。环境里可以出现物资、商店、尸体和可交易对象，但不要自动拿走、自动消耗、自动成交；这些只能作为 choices 交给玩家选择。本回合只执行玩家这条指令本身的内容，指令之外的收益和损失都不要顺手加上去。
+23. 每回合开头先写环境：narration 第一段先交代当前环境（光线、声音、气味、天气、周围动静、可感知的危险），再写玩家的动作与在场角色的对话；dialogue 只写本回合真正在场的角色说的话，不在场的人不能开口。
 
 【输出格式 —— 必须严格遵守】
 只输出一个 JSON 对象，不要加任何 markdown 代码块标记，不要加任何解释文字。格式：
 {
   "summary": "本回合剧情的一句话总结（20~50 字，不重复判定结果，不剧透后续）",
-  "narration": "第二人称环境与动作描写，2-4 段，每段之间用空行分隔，有画面感和压迫感",
+  "narration": "第二人称，第一段先写环境（光线/声音/气味/天气/周围动静），之后写动作与在场角色的对话，2-4 段，每段之间用空行分隔",
   "dialogue": [{"speaker": "说话者", "text": "台词"}],
   "stateChanges": {
     "hp": 0,
@@ -162,7 +168,7 @@ HP {{hp}}/{{hpMax}} · 饥饿 {{hunger}}/{{hungerMax}} · 口渴 {{thirst}}/{{th
     "addEvents": [{"title": "周期事件标题", "content": "发生了什么", "permanent": false}],
     "addSpecialLogs": [{"title": "特别事件标题", "content": "详细记录"}],
     "addCodex": [{"category": "地理环境", "title": "条目名", "content": "条目内容"}],
-    "addContacts": [{"name": "联系人", "note": "关系与备注", "location": "最后已知地点", "method": "phone", "appearance": "体貌描述", "hobbies": ["嗜好1", "嗜好2"], "favor": 0}],
+    "addContacts": [{"name": "全名", "alias": "小名", "relation": "关系", "note": "备注与印象", "location": "最后已知地点", "method": "phone", "appearance": "体貌描述", "hobbies": ["嗜好1", "嗜好2"], "favor": 0}],
     "addLocations": [{"name": "地点名", "x": 3, "y": 3, "desc": "地点描述", "known": true}],
     "addBestiary": [{"name": "丧尸种类", "traits": "特性", "physiology": "生理结构", "likes": "喜好", "threat": "低/中/高/致命", "notes": "补充观察"}],
     "addInjuries": [{"part": "leftLeg", "injury": "小腿撕裂伤", "severity": "中度", "bleeding": true, "needed": ["纱布", "碘伏"], "effect": "移动受限"}],
@@ -185,7 +191,7 @@ HP {{hp}}/{{hpMax}} · 饥饿 {{hunger}}/{{hungerMax}} · 口渴 {{thirst}}/{{th
 }
 
 【choices 字段说明】
-- text：具体行动，不超过 20 字。
+- text：具体行动，不超过 20 字；提到联系人时用小名（全名）格式，如「去找小王（王二麻）借车」。
 - timeCost：按正常步调估算的耗时，单位分钟，最低 5、最高 720。参考基准：简单观察/查看 5~10；搜索/翻找房间 15~30；短距离移动（相邻一格，约 500 米）20~40；街区之间/数格移动 40~90；破拆/修理/搬运 30~60；战斗 10~30；睡觉/过夜 360~480。夜间无光、受伤、负重应适当加时。系统会自动按低调/高调乘以时间系数（低调 ×1.3、高调 ×0.7），不要在这里重复乘。
 - difficulty：容易 / 普通 / 困难 / 危险。夜间、缺少工具、感染区、敌意 NPC 应当提高难度。选项的难度要有区分，至少给一个困难或危险的选项，不要把所有选项都标成容易/普通。
 - stat：主要依赖的属性，只能填 智力 / 体质 / 体力 / 精神 / 理智。

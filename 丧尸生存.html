@@ -1257,6 +1257,7 @@
   .contact-item { background: #1c1c22; border: 1px solid #2b2b33; border-radius: 9px; padding: 9px 10px; }
   .contact-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .contact-name { font-size: 12.5px; color: var(--text-soft); font-weight: 600; }
+  .contact-relation { font-size: 9.5px; color: #8fb6d8; border: 1px solid rgba(143, 182, 216, .35); border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
   .contact-method { font-size: 9.5px; color: #c8a95c; white-space: nowrap; }
   .contact-note { font-size: 10.5px; color: var(--dim); line-height: 1.5; margin-top: 3px; }
   .contact-meta { font-size: 9.5px; color: var(--mute); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; }
@@ -3187,6 +3188,8 @@ function normalizeContact(c) {
   const method = ['phone', 'radio', 'in-person', 'unknown'].includes(c && c.method) ? c.method : 'unknown';
   return {
     name: String(c && c.name || '').trim().slice(0, 20),
+    alias: String(c && c.alias || '').trim().slice(0, 10),
+    relation: String(c && c.relation || '').trim().slice(0, 20),
     note: String(c && c.note || '').slice(0, 140),
     location: String(c && c.location || '').slice(0, 30),
     method,
@@ -3420,6 +3423,17 @@ function contactMethodLabel(method) {
   if (method === 'radio') return '无线电';
   if (method === 'in-person') return '当面';
   return '未知';
+}
+
+// 对话里提到联系人时统一成「小名（全名）」；已经是全名或已带括号的保持原样
+function speakerLabel(raw) {
+  const name = String(raw == null ? '' : raw).trim();
+  if (!name) return DEFAULT_SPEAKER;
+  if (/[（(]/.test(name)) return name;
+  if (!Array.isArray(state.contacts)) return name;
+  const hit = state.contacts.find(c => c.alias && c.alias === name);
+  if (hit && hit.name && hit.name !== name) return `${hit.alias}（${hit.name}）`;
+  return name;
 }
 
 function favorLabel(favor) {
@@ -4030,7 +4044,7 @@ function renderContacts() {
     if (canCall) {
       const callTime = clamp(Math.round(5 * modeTimeMultiplier()), 1, 720);
       const pseudo = {
-        text: `使用${device.name}联系${c.name}`,
+        text: `使用${device.name}联系${c.alias ? `${c.alias}（${c.name}）` : c.name}`,
         timeCost: callTime,
         difficulty: '容易',
         stat: '智力',
@@ -4047,10 +4061,12 @@ function renderContacts() {
       <div class="contact-item">
         <div class="contact-top">
           <span class="contact-name">${esc(c.name)}</span>
+          ${c.relation ? `<span class="contact-relation">${esc(c.relation)}</span>` : ''}
           <span class="contact-method">${contactMethodLabel(c.method)}</span>
           <span class="contact-favor ${favorCls}">好感 ${favor} · ${favorLabel(favor)}</span>
         </div>
         ${c.note ? `<div class="contact-note">${esc(c.note)}</div>` : ''}
+        ${c.alias ? `<div class="contact-line"><b>小名</b>${esc(c.alias)}</div>` : ''}
         ${c.appearance ? `<div class="contact-line"><b>体貌</b>${esc(c.appearance)}</div>` : ''}
         ${c.hobbies && c.hobbies.length ? `<div class="contact-line"><b>嗜好</b>${c.hobbies.map(h => esc(h)).join('、')}</div>` : ''}
         <div class="contact-meta">
@@ -4289,8 +4305,9 @@ async function callContact(name) {
     return;
   }
   const timeCost = clamp(Math.round(5 * modeTimeMultiplier()), 1, 720);
+  const contactLabel = c.alias ? `${c.alias}（${c.name}）` : c.name;
   const pseudo = {
-    text: `使用${device.name}联系${name}`,
+    text: `使用${device.name}联系${contactLabel}`,
     timeCost,
     difficulty: '容易',
     stat: '智力',
@@ -4298,7 +4315,7 @@ async function callContact(name) {
     gear: device.name
   };
   const rate = computeSuccessRate(pseudo, projectClock(timeCost)).rate;
-  await sendAction(`使用${device.name}联系【${name}】`, timeCost, rate, { contactName: name });
+  await sendAction(`使用${device.name}联系${contactLabel}`, timeCost, rate, { contactName: contactLabel });
   const latest = state.contacts.find(x => x.name === name);
   if (latest) {
     latest.lastDay = state.meta.day || 1;
@@ -4500,7 +4517,7 @@ function renderStoryPage(page) {
   }
   (t.blocks || []).forEach(b => {
     if (b.type === 'dialogue') {
-      parts.push(`<p class="dlg-para"><span class="dlg-speaker">${esc(b.speaker || DEFAULT_SPEAKER)}</span>${esc(b.text)}</p>`);
+      parts.push(`<p class="dlg-para"><span class="dlg-speaker">${esc(speakerLabel(b.speaker))}</span>${esc(b.text)}</p>`);
     } else {
       parts.push(`<p>${esc(b.text)}</p>`);
     }
@@ -5556,7 +5573,7 @@ function applyStateChanges(sc, outcome) {
     const isNew = !contact;
     if (!contact) {
       contact = {
-        name, note: '', location: '', method: 'unknown',
+        name, alias: '', relation: '', note: '', location: '', method: 'unknown',
         appearance: '', hobbies: [], favor: 50,
         lastDay: state.meta.day || 1,
         lastHour: state.meta.hour || 0,
@@ -5564,6 +5581,8 @@ function applyStateChanges(sc, outcome) {
       };
       state.contacts.push(contact);
     }
+    if (typeof c.alias === 'string' && c.alias.trim()) contact.alias = c.alias.trim().slice(0, 10);
+    if (typeof c.relation === 'string' && c.relation.trim()) contact.relation = c.relation.trim().slice(0, 20);
     if (typeof c.note === 'string' && c.note.trim()) contact.note = c.note.trim().slice(0, 140);
     if (typeof c.location === 'string' && c.location.trim()) contact.location = c.location.trim().slice(0, 30);
     if (typeof c.appearance === 'string' && c.appearance.trim()) contact.appearance = c.appearance.trim().slice(0, 120);
@@ -5793,7 +5812,16 @@ function buildPromptVars(timeCost = 0, successRate = 0, opts = {}) {
     approach: m.mode === 'high' ? '高调行事（速度快，动静大）' : '低调行事（速度慢，更隐蔽）',
     noise: m.mode === 'high' ? '高' : '低',
     commsDevice: comms ? comms.name : '无',
-    contacts: state.contacts.map(c => `${c.name}（${contactMethodLabel(c.method)}，${c.location || '地点未知'}，好感 ${clamp(Math.round(Number(c.favor) || 50), 0, 100)}）`).join('；') || '暂无',
+    contacts: state.contacts.map(c => {
+      const bits = [
+        c.relation ? `关系 ${c.relation}` : '',
+        c.alias ? `小名 ${c.alias}` : '',
+        contactMethodLabel(c.method),
+        c.location || '地点未知',
+        `好感 ${clamp(Math.round(Number(c.favor) || 50), 0, 100)}`
+      ].filter(Boolean);
+      return `${c.name}（${bits.join('，')}）`;
+    }).join('；') || '暂无',
     knownLocations: state.map.locations.filter(l => l.known).map(l => {
       const d = distanceBetween(state.map.current, l);
       return `${l.name}(${l.x},${l.y}，距离${d}格)`;
@@ -5980,7 +6008,16 @@ HP ${p.hp}/${p.hpMax} · 饥饿 ${p.hunger}/${p.hungerMax} · 口渴 ${p.thirst}
 最近事件：${state.world.events.slice(-6).map(e => `${e.title}（第${e.day || e.turn}天）：${e.content}`).join('；') || '暂无'}
 行事风格：${m.mode === 'high' ? '高调（速度快，动静大）' : '低调（速度慢，隐蔽）'}
 通讯设备：${hasCommDevice() ? hasCommDevice().name : '无'}
-联系人：${state.contacts.map(c => `${c.name}（${contactMethodLabel(c.method)}，${c.location || '地点未知'}，好感 ${clamp(Math.round(Number(c.favor) || 50), 0, 100)}）`).join('；') || '暂无'}
+联系人：${state.contacts.map(c => {
+  const bits = [
+    c.relation ? `关系 ${c.relation}` : '',
+    c.alias ? `小名 ${c.alias}` : '',
+    contactMethodLabel(c.method),
+    c.location || '地点未知',
+    `好感 ${clamp(Math.round(Number(c.favor) || 50), 0, 100)}`
+  ].filter(Boolean);
+  return `${c.name}（${bits.join('，')}）`;
+}).join('；') || '暂无'}
 已知地点：${state.map.locations.filter(l => l.known).map(l => `${l.name}(${l.x},${l.y}，距离${distanceBetween(state.map.current, l)}格)`).join('；') || '暂无'}
 丧尸图鉴：${state.bestiary.map(b => `${b.name}（威胁${b.threat}）`).join('、') || '尚未遭遇'}
 伤情：${state.injuries.map(i => `${injuryPartLabel(i.part)}：${i.injury}（${i.severity}${i.treated ? '，已处理' : ''}${i.needed && i.needed.length ? `，需要${i.needed.join('/')}` : ''}）`).join('；') || '无'}
@@ -5996,7 +6033,7 @@ HP ${p.hp}/${p.hpMax} · 饥饿 ${p.hunger}/${p.hungerMax} · 口渴 ${p.thirst}
 5. 每3~5回合给一次可收集日志；每5~8回合触发一次周期事件并写入 addEvents；重大转折写入 addSpecialLogs；发现新地点/敌人/规则时写入 addCodex。
 6. 夜间 20:00~05:00 天色黑暗。无光源时搜索、移动、开锁几乎无法进行；手机/打火机等弱光可以勉强行动但更容易出错；强光也可能引来注意。描写要体现光线、视野和声音的变化。
 7. 装备、携带物品、情报、暂存物资分开记录。choices 的 difficulty 要有区分，至少给一个困难或危险选项，不要全部标成容易/普通。以第二人称“你”叙述，中文，压抑写实，不要爽文。
-8. 遇到愿意保持联系的具名 NPC 时写入 addContacts（method 取 phone/radio/in-person/unknown；appearance 写体貌，hobbies 写嗜好，favor 写好感变化正负整数、favorSet 写 0~100 绝对值，新联系人默认 50）；联系人不是队友。玩家远程联系时只消耗很短时间，不移动位置。
+8. 联系人把名称和关系分开：addContacts 写 name（全名，如「王二麻」）、alias（小名，如「小王」，没有就留空）、relation（关系，如「同事」「邻居」「母亲」）、note（备注印象）；method 取 phone/radio/in-person/unknown；appearance 写体貌，hobbies 写嗜好，favor 写好感变化正负整数、favorSet 写 0~100 绝对值，新联系人默认 50。对话 speaker 与 choices 提到联系人时用小名（全名）格式，如「小王（王二麻）」，没有小名就用全名。联系人不是队友；玩家远程联系时只消耗很短时间，不移动位置。
 9. 用 0~6 网格记录地点；发现新地点写入 addLocations（x/y 在 0~6）；前往目标时把 scene.name 设为该地点并写 x/y。每格约 500 米、步行 30 分钟。
 10. 丧尸图鉴初始为空，只有真正遭遇某类丧尸或变异体时才写入 addBestiary（name/traits/physiology/likes/threat/notes）；已解锁的普通同类用同名条目更新。遇到形态、行为或生理结构明显不同的变异体（爬行者、奔跑者、膨胀者、集群个体等），必须用新的 name 单独写入，不要合并到普通感染者条目。
 11. 高调行事更快但动静大，可能引来感染者和 NPC；低调更慢但隐蔽。本回合按该风格叙写。choices 的 timeCost 按正常步调估算，系统会自动乘行事风格系数，不要重复调整。
@@ -6010,9 +6047,11 @@ HP ${p.hp}/${p.hpMax} · 饥饿 ${p.hunger}/${p.hungerMax} · 口渴 ${p.thirst}
 15. HP 归零或感染度达到 100 即终局；饥饿或口渴归零后进入 3 回合衰竭倒计时，倒计时内进食/饮水可解除，归零同样终局。若判定允许死亡，用 hp 负值和致命伤表现，不要假死、强行救回或无代价复生。
 16. 每回合必须输出 summary：20~50 字的一句话剧情总结，不重复判定结果、不剧透后续，也不要直接复制 narration。
 17. 外貌与癖好在选出身时已设定，之后只随剧情与行动变化：受伤留疤、染血、换装、消瘦写 appearance（一句 60 字内的追加描述）；养成新习惯写 addHobbies（1~2 个短词）。不要每回合都改。
+18. 玩家自主：玩家没有在【本回合行动】里明确要求时，不得替玩家搜刮、拿取、使用库存物品、进食饮水、交易、花钱、移动或休息。环境里可以出现物资和可交易对象，但不能自动拿走、自动消耗或自动成交，只能写进 choices 让玩家选择。本回合只执行玩家这条指令本身的内容。
+19. 每回合开头先写环境：narration 第一段先交代当前环境（光线、声音、气味、天气、周围动静），再写动作与在场角色对话；dialogue 只写本回合真正在场的角色说的话。
 
 只输出一个 JSON 对象，不要 markdown 代码块，不要解释。格式：
-{"summary":"一句话剧情总结","narration":"第二人称描写，2-4段，用空行分隔","dialogue":[{"speaker":"说话者","text":"台词"}],"stateChanges":{"hp":0,"hunger":-2,"thirst":-3,"sta":-5,"spirit":0,"san":0,"infection":0,"money":0,"appearance":"","addHobbies":[],"addItems":[{"name":"","qty":1,"desc":"","consumable":true}],"removeItems":[{"name":"","qty":1}],"addEquipment":[{"name":"","desc":"","condition":"90%"}],"removeEquipment":[{"name":""}],"addIntel":["情报"],"addStash":[{"location":"","desc":"","items":["物品×数量"]}],"addSkills":[{"name":"","level":1,"desc":""}],"skillExp":[{"name":"","exp":10}],"scene":{"name":"","desc":"","exits":[],"x":3,"y":3,"reserves":[{"name":"","qty":1}]},"stage":{"environment":"","supplies":"","society":""},"addEvents":[{"title":"","content":"","permanent":false}],"addSpecialLogs":[{"title":"","content":""}],"addCodex":[{"category":"","title":"","content":""}],"addContacts":[{"name":"","note":"","location":"","method":"phone","appearance":"","hobbies":[],"favor":0}],"addLocations":[{"name":"","x":3,"y":3,"desc":"","known":true}],"addBestiary":[{"name":"","traits":"","physiology":"","likes":"","threat":"未知","notes":""}],"addInjuries":[{"part":"leftLeg","injury":"","severity":"中度","bleeding":false,"needed":["纱布","碘伏"],"effect":""}],"removeInjuries":[{"part":"leftLeg","injury":""}],"addLogs":[{"title":"","content":"","source":""}],"vehicle":{"name":"","type":"","condition":90,"fuel":50,"cargoCap":200,"weightCap":300,"cargo":[{"name":"","qty":1,"weight":1}]},"addBuildings":[{"name":"","desc":"","rooms":[{"name":"","status":"","desc":""}],"entrances":[{"name":"","status":"","desc":""}]}],"updateBuildings":[{"name":"","desc":"","rooms":[{"name":"","status":"","desc":""}],"entrances":[{"name":"","status":"","desc":""}]}]},"choices":[{"text":"行动描述，不超过20字","timeCost":15,"difficulty":"普通","stat":"智力","skill":"观察","gear":"手电"}]}`;
+{"summary":"一句话剧情总结","narration":"第二人称描写，2-4段，用空行分隔","dialogue":[{"speaker":"说话者","text":"台词"}],"stateChanges":{"hp":0,"hunger":-2,"thirst":-3,"sta":-5,"spirit":0,"san":0,"infection":0,"money":0,"appearance":"","addHobbies":[],"addItems":[{"name":"","qty":1,"desc":"","consumable":true}],"removeItems":[{"name":"","qty":1}],"addEquipment":[{"name":"","desc":"","condition":"90%"}],"removeEquipment":[{"name":""}],"addIntel":["情报"],"addStash":[{"location":"","desc":"","items":["物品×数量"]}],"addSkills":[{"name":"","level":1,"desc":""}],"skillExp":[{"name":"","exp":10}],"scene":{"name":"","desc":"","exits":[],"x":3,"y":3,"reserves":[{"name":"","qty":1}]},"stage":{"environment":"","supplies":"","society":""},"addEvents":[{"title":"","content":"","permanent":false}],"addSpecialLogs":[{"title":"","content":""}],"addCodex":[{"category":"","title":"","content":""}],"addContacts":[{"name":"全名","alias":"小名","relation":"关系","note":"备注与印象","location":"","method":"phone","appearance":"","hobbies":[],"favor":0}],"addLocations":[{"name":"","x":3,"y":3,"desc":"","known":true}],"addBestiary":[{"name":"","traits":"","physiology":"","likes":"","threat":"未知","notes":""}],"addInjuries":[{"part":"leftLeg","injury":"","severity":"中度","bleeding":false,"needed":["纱布","碘伏"],"effect":""}],"removeInjuries":[{"part":"leftLeg","injury":""}],"addLogs":[{"title":"","content":"","source":""}],"vehicle":{"name":"","type":"","condition":90,"fuel":50,"cargoCap":200,"weightCap":300,"cargo":[{"name":"","qty":1,"weight":1}]},"addBuildings":[{"name":"","desc":"","rooms":[{"name":"","status":"","desc":""}],"entrances":[{"name":"","status":"","desc":""}]}],"updateBuildings":[{"name":"","desc":"","rooms":[{"name":"","status":"","desc":""}],"entrances":[{"name":"","status":"","desc":""}]}]},"choices":[{"text":"行动描述，不超过20字","timeCost":15,"difficulty":"普通","stat":"智力","skill":"观察","gear":"手电"}]}`;
 }
 
 function buildHistoryMessages() {
@@ -6473,8 +6512,8 @@ const ORIGIN_EXTRAS = {
     money: 120,
     home: { name: '城东出租屋', desc: '你和别人合租的老小区单间，门口堆着没拆的纸箱。' },
     contacts: [
-      { name: '站点主管', note: '对你还算客气，手上有一片区的派送名单。', location: '城东快递站点', method: 'phone', favor: 60 },
-      { name: '室友阿凯', note: '跑外卖的，作息和你错开。', location: '城东出租屋', method: 'phone', favor: 65 }
+      { name: '赵国安', alias: '老赵', relation: '站点主管', note: '对你还算客气，手上有一片区的派送名单。', location: '城东快递站点', method: 'phone', favor: 60 },
+      { name: '陈凯', alias: '阿凯', relation: '室友', note: '跑外卖的，作息和你错开。', location: '城东出租屋', method: 'phone', favor: 65 }
     ],
     vehicle: { name: '电动车', type: '电动车', condition: 85, fuel: 60, cargoCap: 40, weightCap: 30 }
   },
@@ -6482,16 +6521,16 @@ const ORIGIN_EXTRAS = {
     money: 180,
     home: { name: '医院附近的家', desc: '离医院两站路的老式一居室，冰箱里还塞着上周的菜。' },
     contacts: [
-      { name: '护士长', note: '脾气急，但护着自己人。', location: '市三院', method: 'phone', favor: 70 },
-      { name: '妈妈', note: '每天固定时间打电话。', location: '老家', method: 'phone', favor: 85 }
+      { name: '周慧兰', alias: '周姐', relation: '护士长', note: '脾气急，但护着自己人。', location: '市三院', method: 'phone', favor: 70 },
+      { name: '张秀英', alias: '妈', relation: '母亲', note: '每天固定时间打电话。', location: '老家', method: 'phone', favor: 85 }
     ]
   },
   firefighter: {
     money: 150,
     home: { name: '消防站家属楼', desc: '站后面的家属楼宿舍，床头放着全家福。' },
     contacts: [
-      { name: '队友老陈', note: '昨晚出警还没回来。', location: '城南消防站', method: 'radio', favor: 75 },
-      { name: '妻子', note: '在城西上班。', location: '城西', method: 'phone', favor: 90 }
+      { name: '陈国强', alias: '老陈', relation: '消防队队友', note: '昨晚出警还没回来。', location: '城南消防站', method: 'radio', favor: 75 },
+      { name: '林静', alias: '静', relation: '妻子', note: '在城西上班。', location: '城西', method: 'phone', favor: 90 }
     ],
     items: [{ name: '对讲机', qty: 1, desc: '站里配的，频道还通。', consumable: false }],
     vehicle: { name: '消防车', type: '消防车', condition: 90, fuel: 50, cargoCap: 800, weightCap: 2000 }
@@ -6500,32 +6539,32 @@ const ORIGIN_EXTRAS = {
     money: 60,
     home: { name: '便利店楼上隔间', desc: '老板隔出来的小房间，一张床一个电磁炉。' },
     contacts: [
-      { name: '店长', note: '平时抠门，出事了倒是先问你安不安全。', location: '街角便利店', method: 'phone', favor: 55 },
-      { name: '同事小敏', note: '早班搭档，今天还没来。', location: '城东', method: 'phone', favor: 65 }
+      { name: '黄德发', alias: '黄哥', relation: '店长', note: '平时抠门，出事了倒是先问你安不安全。', location: '街角便利店', method: 'phone', favor: 55 },
+      { name: '林晓敏', alias: '小敏', relation: '同事', note: '早班搭档，今天还没来。', location: '城东', method: 'phone', favor: 65 }
     ]
   },
   student: {
     money: 40,
     home: { name: '大学城宿舍', desc: '四人间，桌上摊着没写完的论文。' },
     contacts: [
-      { name: '户外社社长', note: '装备比谁都全，就是爱冒险。', location: '大学城', method: 'phone', favor: 70 },
-      { name: '室友', note: '宅在宿舍打游戏。', location: '大学城宿舍', method: 'phone', favor: 60 }
+      { name: '徐骁', alias: '徐队', relation: '户外社社长', note: '装备比谁都全，就是爱冒险。', location: '大学城', method: 'phone', favor: 70 },
+      { name: '李想', alias: '想哥', relation: '室友', note: '宅在宿舍打游戏。', location: '大学城宿舍', method: 'phone', favor: 60 }
     ]
   },
   veteran: {
     money: 200,
     home: { name: '城北老小区', desc: '父母留下的老房子，奖章收在抽屉里。' },
     contacts: [
-      { name: '老班长', note: '退伍后开了家安保公司。', location: '城北', method: 'phone', favor: 75 },
-      { name: '战友大刘', note: '在城东跑货运。', location: '城东货运站', method: 'phone', favor: 70 }
+      { name: '李建军', alias: '老班长', relation: '班长', note: '退伍后开了家安保公司。', location: '城北', method: 'phone', favor: 75 },
+      { name: '刘志强', alias: '大刘', relation: '战友', note: '在城东跑货运。', location: '城东货运站', method: 'phone', favor: 70 }
     ]
   },
   mechanic: {
     money: 100,
     home: { name: '汽修厂后屋', desc: '厂子后面隔出来的住处，工具箱比衣柜还大。' },
     contacts: [
-      { name: '老板', note: '今天没来，电话也不接。', location: '顺达汽修厂', method: 'phone', favor: 50 },
-      { name: '工友小赵', note: '刚来半年，手还生。', location: '城南', method: 'phone', favor: 60 }
+      { name: '孙德海', alias: '孙老板', relation: '老板', note: '今天没来，电话也不接。', location: '顺达汽修厂', method: 'phone', favor: 50 },
+      { name: '赵鹏', alias: '小赵', relation: '工友', note: '刚来半年，手还生。', location: '城南', method: 'phone', favor: 60 }
     ],
     vehicle: { name: '旧面包车', type: '面包车', condition: 70, fuel: 40, cargoCap: 300, weightCap: 600 }
   },
@@ -6533,8 +6572,8 @@ const ORIGIN_EXTRAS = {
     money: 90,
     home: { name: '写字楼旁的公寓', desc: '一室一厅，客厅堆满设备和没拆的快递。' },
     contacts: [
-      { name: '助理', note: '今天说好不来了。', location: '市中心', method: 'phone', favor: 55 },
-      { name: '粉丝群管理', note: '总能第一时间发来本地消息。', location: '未知', method: 'phone', favor: 60 }
+      { name: '周雨彤', alias: '小雨', relation: '助理', note: '今天说好不来了。', location: '市中心', method: 'phone', favor: 55 },
+      { name: '陈曦', alias: '曦曦', relation: '粉丝群管理', note: '总能第一时间发来本地消息。', location: '未知', method: 'phone', favor: 60 }
     ]
   }
 };
@@ -6544,7 +6583,7 @@ function createGame(originId, name, diffKey, customOrigin, gender = '未指定',
     ? customOrigin
     : (ORIGINS[originId] || ORIGINS.courier);
   const extra = o.id === 'custom'
-    ? { money: 100, home: { name: '出租屋', desc: '你自己的小住处。' }, contacts: [{ name: '家人', note: '你的家人，隔一阵子会发消息来。', location: '老家', method: 'phone', favor: 85 }] }
+    ? { money: 100, home: { name: '出租屋', desc: '你自己的小住处。' }, contacts: [{ name: '家人', alias: '', relation: '家人', note: '你的家人，隔一阵子会发消息来。', location: '老家', method: 'phone', favor: 85 }] }
     : (ORIGIN_EXTRAS[o.id] || null);
   const hobbyInput = String(hobbies || '').split(/[、,，;；]/).map(h => h.trim().slice(0, 20)).filter(Boolean);
   const finalHobbies = hobbyInput.length
@@ -7074,7 +7113,8 @@ function txtContacts() {
   if (!state.contacts.length) lines.push('  （还没有联系人）');
   state.contacts.forEach((c, i) => {
     const favor = clamp(Math.round(Number(c.favor) || 50), 0, 100);
-    lines.push(`${String(i + 1).padStart(2, '0')}. ${c.name}  [${contactMethodLabel(c.method)}]`);
+    lines.push(`${String(i + 1).padStart(2, '0')}. ${c.name}${c.relation ? `（${c.relation}）` : ''}  [${contactMethodLabel(c.method)}]`);
+    if (c.alias) lines.push(`    小名：${c.alias}`);
     if (c.note) lines.push(`    备注：${c.note}`);
     if (c.appearance) lines.push(`    体貌：${c.appearance}`);
     if (c.hobbies && c.hobbies.length) lines.push(`    嗜好：${c.hobbies.join('、')}`);
