@@ -2519,6 +2519,11 @@ function survivalWarnings() {
   if (Number(p.sta) <= 10) add('warn', '体力接近耗尽：需要休息');
   if (Number(p.spirit) <= 10) add('warn', '精神接近崩溃：需要安全与休息');
   if (Number(p.san) <= 10) add('warn', '理智接近崩溃：需要稳定情绪');
+  const load = currentWeight();
+  const cap = weightCap();
+  if (cap > 0 && load > cap) add('danger', `负重超限：${load}/${cap}kg，行动成功率下降`);
+  else if (cap > 0 && load > cap * 0.85) add('warn', `负重偏高：${load}/${cap}kg`);
+  if (currentCarry() >= carryCap()) add('warn', `携带量已满：${currentCarry()}/${carryCap()}，无法再拾取`);
   return list;
 }
 
@@ -2952,6 +2957,24 @@ function computeSuccessRate(choice, endClock) {
     injury.factors.forEach(f => factors.push(f));
   }
 
+  // 负重影响行动：接近上限小幅惩罚，超过上限惩罚明显
+  const load = currentWeight();
+  const cap = weightCap();
+  if (cap > 0) {
+    const ratio = load / cap;
+    if (ratio > 1) {
+      const pen = Math.min(25, Math.round(10 + (ratio - 1) * 30));
+      rate -= pen;
+      factors.push(`超重 ${load}/${cap}kg -${pen}`);
+    } else if (ratio > 0.85) {
+      rate -= 6;
+      factors.push(`负重偏高 ${load}/${cap}kg -6`);
+    } else if (ratio > 0.7) {
+      rate -= 2;
+      factors.push(`负重增加 ${load}/${cap}kg -2`);
+    }
+  }
+
   if (state.meta.mode === 'high') {
     rate -= 6;
     factors.push('高调 -6');
@@ -3173,8 +3196,22 @@ function buildMapFromScene(scene) {
   return { locations, current: { x: GRID_CENTER, y: GRID_CENTER } };
 }
 
-function buildInitialMap(o) {
-  return buildMapFromScene({ name: o.scene.name, desc: o.scene.desc, exits: o.scene.exits });
+function buildInitialMap(o, home) {
+  const map = buildMapFromScene({ name: o.scene.name, desc: o.scene.desc, exits: o.scene.exits });
+  if (home && home.name && home.name !== o.scene.name) {
+    const locs = map.locations;
+    const taken = (x, y) => locs.some(l => l.x === x && l.y === y);
+    const candidates = [[-2, 0], [2, 0], [0, -2], [0, 2], [-2, -2], [2, 2], [-2, 2], [2, -2]];
+    for (const [dx, dy] of candidates) {
+      const x = GRID_CENTER + dx;
+      const y = GRID_CENTER + dy;
+      if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE && !taken(x, y)) {
+        locs.push({ name: String(home.name).slice(0, 30), x, y, desc: home.desc || '你的家。', known: true, visited: false });
+        break;
+      }
+    }
+  }
+  return map;
 }
 
 function normalizeMap(raw, scene) {
@@ -3404,7 +3441,7 @@ function bagBonus() {
     return /背包|布袋|腰包|挎包|旅行包|登山包|邮差包/.test(n) ? sum + 4 : sum;
   }, 0);
 }
-function carryCap() { return 10 + bagBonus(); }
+function carryCap() { return 12 + bagBonus(); }
 function currentCarry() { return (state.items || []).reduce((a, it) => a + (Number(it.qty) || 0), 0); }
 function weightCap() {
   const con = Number(state.player && state.player.con) || 50;
@@ -5254,8 +5291,18 @@ function applyStateChanges(sc) {
 
   (sc.addItems || []).forEach(it => {
     if (!it || !it.name) return;
+    let qty = Number(it.qty) || 1;
+    const isBag = /背包|布袋|腰包|挎包|旅行包|登山包|邮差包/.test(String(it.name));
+    const room = carryCap() + (isBag ? 4 : 0) - currentCarry();
+    if (room <= 0) {
+      notes.push(`携带量已满（${currentCarry()}/${carryCap()}），装不下【${it.name}】`);
+      return;
+    }
+    if (qty > room) {
+      notes.push(`携带量不足，【${it.name}】只装下 ${room} 个（上限 ${carryCap()}）`);
+      qty = room;
+    }
     const exist = state.items.find(i => i.name === it.name);
-    const qty = Number(it.qty) || 1;
     if (exist) exist.qty += qty;
     else {
       const item = { name: it.name, qty, desc: it.desc || '', consumable: !!it.consumable };
@@ -6279,10 +6326,81 @@ function normalizeCustomOrigin(raw, description) {
   };
 }
 
+/* 各出身的起始货币、自己的家，以及开局就认识的人 */
+const ORIGIN_EXTRAS = {
+  courier: {
+    money: 120,
+    home: { name: '城东出租屋', desc: '你和别人合租的老小区单间，门口堆着没拆的纸箱。' },
+    contacts: [
+      { name: '站点主管', note: '对你还算客气，手上有一片区的派送名单。', location: '城东快递站点', method: 'phone', favor: 60 },
+      { name: '室友阿凯', note: '跑外卖的，作息和你错开。', location: '城东出租屋', method: 'phone', favor: 65 }
+    ]
+  },
+  nurse: {
+    money: 180,
+    home: { name: '医院附近的家', desc: '离医院两站路的老式一居室，冰箱里还塞着上周的菜。' },
+    contacts: [
+      { name: '护士长', note: '脾气急，但护着自己人。', location: '市三院', method: 'phone', favor: 70 },
+      { name: '妈妈', note: '每天固定时间打电话。', location: '老家', method: 'phone', favor: 85 }
+    ]
+  },
+  firefighter: {
+    money: 150,
+    home: { name: '消防站家属楼', desc: '站后面的家属楼宿舍，床头放着全家福。' },
+    contacts: [
+      { name: '队友老陈', note: '昨晚出警还没回来。', location: '城南消防站', method: 'radio', favor: 75 },
+      { name: '妻子', note: '在城西上班。', location: '城西', method: 'phone', favor: 90 }
+    ]
+  },
+  clerk: {
+    money: 60,
+    home: { name: '便利店楼上隔间', desc: '老板隔出来的小房间，一张床一个电磁炉。' },
+    contacts: [
+      { name: '店长', note: '平时抠门，出事了倒是先问你安不安全。', location: '街角便利店', method: 'phone', favor: 55 },
+      { name: '同事小敏', note: '早班搭档，今天还没来。', location: '城东', method: 'phone', favor: 65 }
+    ]
+  },
+  student: {
+    money: 40,
+    home: { name: '大学城宿舍', desc: '四人间，桌上摊着没写完的论文。' },
+    contacts: [
+      { name: '户外社社长', note: '装备比谁都全，就是爱冒险。', location: '大学城', method: 'phone', favor: 70 },
+      { name: '室友', note: '宅在宿舍打游戏。', location: '大学城宿舍', method: 'phone', favor: 60 }
+    ]
+  },
+  veteran: {
+    money: 200,
+    home: { name: '城北老小区', desc: '父母留下的老房子，奖章收在抽屉里。' },
+    contacts: [
+      { name: '老班长', note: '退伍后开了家安保公司。', location: '城北', method: 'phone', favor: 75 },
+      { name: '战友大刘', note: '在城东跑货运。', location: '城东货运站', method: 'phone', favor: 70 }
+    ]
+  },
+  mechanic: {
+    money: 100,
+    home: { name: '汽修厂后屋', desc: '厂子后面隔出来的住处，工具箱比衣柜还大。' },
+    contacts: [
+      { name: '老板', note: '今天没来，电话也不接。', location: '顺达汽修厂', method: 'phone', favor: 50 },
+      { name: '工友小赵', note: '刚来半年，手还生。', location: '城南', method: 'phone', favor: 60 }
+    ]
+  },
+  streamer: {
+    money: 90,
+    home: { name: '写字楼旁的公寓', desc: '一室一厅，客厅堆满设备和没拆的快递。' },
+    contacts: [
+      { name: '助理', note: '今天说好不来了。', location: '市中心', method: 'phone', favor: 55 },
+      { name: '粉丝群管理', note: '总能第一时间发来本地消息。', location: '未知', method: 'phone', favor: 60 }
+    ]
+  }
+};
+
 function createGame(originId, name, diffKey, customOrigin, gender = '未指定', personality = '') {
   const o = (originId === 'custom' && customOrigin)
     ? customOrigin
     : (ORIGINS[originId] || ORIGINS.courier);
+  const extra = o.id === 'custom'
+    ? { money: 100, home: { name: '出租屋', desc: '你自己的小住处。' }, contacts: [{ name: '家人', note: '你的家人，隔一阵子会发消息来。', location: '老家', method: 'phone', favor: 85 }] }
+    : (ORIGIN_EXTRAS[o.id] || null);
   const dd = DIFFICULTIES[diffKey] || DIFFICULTIES.hard;
   const fresh = DEFAULT_STATE();
   const outbreakDay = pickOutbreakDay(dd.key);
@@ -6306,7 +6424,7 @@ function createGame(originId, name, diffKey, customOrigin, gender = '未指定',
     deathCause: '', deathLabel: '', deathDay: 0, deathHour: 0, deathMinute: 0, deathTurn: 0,
     thirstZero: 0, hungerZero: 0
   };
-  fresh.contacts = [];
+  fresh.contacts = ((extra && extra.contacts) || []).map(normalizeContact).filter(c => c.name);
   fresh.bestiary = [];
 
   fresh.player = Object.assign(fresh.player, {
@@ -6319,6 +6437,7 @@ function createGame(originId, name, diffKey, customOrigin, gender = '未指定',
     personality: String(personality || '').trim().slice(0, 40),
     appearance: String(o.appearance || '').trim().slice(0, 120),
     hobbies: Array.isArray(o.hobbies) ? o.hobbies.map(h => String(h).trim().slice(0, 20)).filter(Boolean).slice(0, 8) : [],
+    money: Number(extra && extra.money) || 0,
     hp: 100, hpMax: 100,
     sta: o.stats.sta, staMax: 100,
     spirit: o.stats.spirit, spiritMax: 100,
@@ -6332,6 +6451,16 @@ function createGame(originId, name, diffKey, customOrigin, gender = '未指定',
   fresh.skills = o.skills.map(s => Object.assign({}, s, { exp: 0 }));
   fresh.items = o.items.map(i => Object.assign({}, i));
   fresh.equipment = o.equipment.map(g => Object.assign({}, g));
+  // 起始携带量不超过上限（自定义出身可能生成较多物品）
+  const bagCount = (arr) => arr.filter(x => /背包|布袋|腰包|挎包|旅行包|登山包|邮差包/.test(String(x && x.name || ''))).length;
+  const startCap = 12 + (bagCount(fresh.items) + bagCount(fresh.equipment)) * 4;
+  let startCarry = fresh.items.reduce((a, b) => a + (Number(b.qty) || 0), 0);
+  for (let i = fresh.items.length - 1; i >= 0 && startCarry > startCap; i--) {
+    const cut = Math.min(startCarry - startCap, fresh.items[i].qty);
+    fresh.items[i].qty -= cut;
+    startCarry -= cut;
+    if (fresh.items[i].qty <= 0) fresh.items.splice(i, 1);
+  }
   fresh.intel = o.intel.slice();
   fresh.stash = o.stash.map(s => Object.assign({}, s, { items: (s.items || []).slice() }));
   fresh.scene = {
@@ -6340,7 +6469,7 @@ function createGame(originId, name, diffKey, customOrigin, gender = '未指定',
     exits: o.scene.exits.slice(),
     reserves: o.reserves.map(r => Object.assign({}, r))
   };
-  fresh.map = buildInitialMap(o);
+  fresh.map = buildInitialMap(o, extra && extra.home);
   fresh.world = {
     stage: Object.assign({}, PRE_OUTBREAK_STAGE),
     events: [{
@@ -6615,6 +6744,8 @@ function txtItems() {
     '           末 日 回 响 · 物 品 栏',
     '═══════════════════════════════════════',
     `导出时间：${nowText()}`,
+    `携带量：${currentCarry()} / ${carryCap()}${currentCarry() >= carryCap() ? '（已满）' : ''}`,
+    `负重：${currentWeight()} / ${weightCap()} kg${currentWeight() > weightCap() ? '（超重）' : ''}`,
     `携带物品：${state.items.reduce((a, b) => a + (Number(b.qty) || 0), 0)} 件 / ${state.items.length} 种`,
     `装备物品：${state.equipment.length} 件`,
     `关键情报：${state.intel.length} 条`,
@@ -6624,7 +6755,7 @@ function txtItems() {
   ];
   if (!state.items.length) lines.push('  （空）');
   state.items.forEach((it, i) => {
-    lines.push(`${String(i + 1).padStart(2, '0')}. ${it.name}  ×${it.qty}`);
+    lines.push(`${String(i + 1).padStart(2, '0')}. ${it.name}  ×${it.qty}（${itemWeight(it)} kg/件）`);
     lines.push(`    ${it.desc || '（无描述）'}`);
     lines.push(`    [${it.consumable ? '消耗品' : '装备/杂物'}]`);
   });
