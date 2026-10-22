@@ -3040,33 +3040,43 @@ function outcomeBaseSuccess(outcome) {
 function outcomeGuidance(outcome) {
   const key = outcome.key;
   const rate = Number(outcome.rate) || 0;
+  const mult = Number(outcome.multiplier) || 1;
   if (key === 'criticalSuccess') {
-    return '大成功：底判成功且命运骰极佳，额外收益、发现、优势或节省时间；不要无代价地给过多资源。';
+    return `大成功：底判成功且命运骰极佳，本回合收益按 ×${mult} 增幅——基础 1 份放大成 ${mult} 份（物资数量、情报条数、时间节省、发现价值都按此结算），可再附带一个额外优势。`;
   }
   if (key === 'minorSuccess') {
-    return '小成功：底判成功但命运骰很差，目标可以达成，但收益必须减少（少拿物资/情报、效果打折、多耗时间）；绝对不得造成伤害、丢失已有物资或暴露行踪。';
+    return '小成功：底判成功但命运骰很差，目标仍可达成，收益减半/按最低档结算；绝对不得造成伤害、感染、丢失已有物资或暴露行踪。';
   }
   if (key === 'success') {
     return '成功：按预期达成目标。';
   }
   if (key === 'criticalFail') {
     if (rate >= 75) {
-      return '大失败：底判失败且命运骰极差。成功率很高，后果限于轻微擦伤、短暂卡住、少量物资损失或尴尬；不能造成重伤、致残或死亡。';
+      return '大失败：底判失败且命运骰极差，但本轮成功率很高，实际后果封顶：最多轻微擦伤、少量物资损失或尴尬，不放大伤害、不致死。';
     }
-    if (rate >= 40) {
-      return '大失败：底判失败且命运骰极差，明显受挫或受伤，可以丢失少量物资或造成中度伤；不要直接写死。';
-    }
-    return '大失败：底判失败且命运骰极差。严重后果，若行动带有战斗或高危性质，可以造成重伤、致命伤甚至死亡（HP 归零）；不要手下留情。';
+    return `大失败：底判失败且命运骰极差，负面后果按 ×${mult} 增幅——基础 -1 放大成 -${mult}（伤害、丢失物资、暴露位置同理）；行动高危时可以重伤、致命伤甚至死亡（HP 归零）。`;
   }
   if (key === 'minorFail') {
-    return '小失败：底判失败，但命运骰极佳，目标没有达成，却侥幸避开额外代价。';
+    return '小失败：底判失败，但命运骰极佳，失败只保留最低代价（例如 -1），不放大伤害、损失或伤势，可留一点意外线索。';
   }
   return rate >= 50 ? '失败：目标没有达成，代价有限。' : '失败：目标没有达成，并付出明显代价。';
 }
 
-// 两段式判定：先按成功率掷判定骰定成败，再掷命运骰定档次。
-// 命运骰 <=10 属于大失败档、>=90 属于大成功档；但档位只会朝“底判结果”的方向生效：
-// 底判成功 + 命运骰 <=10 → 小成功（收益减少，无任何负面效果）；底判失败 + 命运骰 >=90 → 小失败（失败但无额外代价）。
+// 两段式判定：先按成功率掷判定骰定成败，再掷命运骰做「增幅」。
+// 命运骰 1~10 是负面增幅档、90~100 是正面增幅档，增幅只朝底判结果的方向生效：
+// 成功 → 收益放大或减半，绝不产生负面；失败 → 代价放大（1~10 档）或维持最低（90~100 档）。
+function outcomeMultiplier(roll, baseSuccess) {
+  if (baseSuccess) {
+    if (roll >= 95) return 100;
+    if (roll >= CRIT_SUCCESS_ROLL) return 10;
+    if (roll <= CRIT_FAIL_ROLL) return 0.5;
+    return 1;
+  }
+  if (roll <= 5) return 100;
+  if (roll <= CRIT_FAIL_ROLL) return 10;
+  return 1;
+}
+
 function rollOutcome(rate) {
   const r = clamp(Math.round(Number(rate) || 0), 5, 95);
   const checkRoll = 1 + Math.floor(Math.random() * 100);
@@ -3082,9 +3092,16 @@ function rollOutcome(rate) {
     else if (roll >= CRIT_SUCCESS_ROLL) { key = 'minorFail'; label = '小失败'; }
     else { key = 'fail'; label = '失败'; }
   }
-  const outcome = { key, label, roll, checkRoll, baseSuccess, rate: r };
+  const multiplier = outcomeMultiplier(roll, baseSuccess);
+  const outcome = { key, label, roll, checkRoll, baseSuccess, rate: r, multiplier };
   outcome.guidance = outcomeGuidance(outcome);
   return outcome;
+}
+
+function outcomeAmpText(outcome) {
+  const mult = Number(outcome && outcome.multiplier) || 1;
+  if (mult === 1) return '';
+  return mult < 1 ? ' · 收益 ×0.5' : ` · 增幅 ×${mult}`;
 }
 
 function outcomeClass(key) {
@@ -4474,7 +4491,7 @@ function renderStoryPage(page) {
   if (t.outcome) {
     parts.push(`<div class="outcome-line">
       <span class="outcome-tag ${outcomeClass(t.outcome.key)}">判定：${esc(t.outcome.label)}</span>
-      <span class="outcome-detail">底判${outcomeBaseSuccess(t.outcome) ? '成功' : '失败'} · 掷骰 ${t.outcome.roll} / 成功率 ${t.outcome.rate}%</span>
+      <span class="outcome-detail">底判${outcomeBaseSuccess(t.outcome) ? '成功' : '失败'} · 掷骰 ${t.outcome.roll} / 成功率 ${t.outcome.rate}%${outcomeAmpText(t.outcome)}</span>
     </div>`);
   }
   (t.blocks || []).forEach(b => {
@@ -5094,7 +5111,7 @@ async function sendAction(text, timeCost, successRate, options) {
     const vitalsBefore = { thirst: state.player.thirst, hunger: state.player.hunger };
     const infectionBefore = state.player.infection;
     const injuryBefore = new Map(state.injuries.map(i => [`${i.part}|${i.injury}`, i.severity]));
-    const applied = applyStateChanges(parsed.stateChanges);
+    const applied = applyStateChanges(parsed.stateChanges, outcome);
     const timeInfo = advanceTime(timeCost);
 
     if (opts.travelTo) {
@@ -5196,6 +5213,7 @@ async function sendAction(text, timeCost, successRate, options) {
         roll: outcome.roll,
         checkRoll: outcome.checkRoll,
         baseSuccess: outcome.baseSuccess,
+        multiplier: outcome.multiplier,
         rate: outcome.rate
       },
       dead: deadNow,
@@ -5224,7 +5242,7 @@ async function sendAction(text, timeCost, successRate, options) {
 
     if (fallback) toast('叙事引擎返回格式异常，已按纯文本展示', 'err');
     toast(
-      `判定：${outcome.label} · 底判${outcome.baseSuccess ? '成功' : '失败'} · 掷骰 ${outcome.roll} / 成功率 ${outcome.rate}%`,
+      `判定：${outcome.label} · 底判${outcome.baseSuccess ? '成功' : '失败'} · 掷骰 ${outcome.roll} / 成功率 ${outcome.rate}%${outcomeAmpText(outcome)}`,
       outcome.key === 'criticalFail' || outcome.key === 'fail' || outcome.key === 'minorFail' ? 'err' : 'ok'
     );
     if (timeInfo.outbreakTriggered) {
@@ -5295,7 +5313,7 @@ function useItem(idx) {
 }
 
 /* ---------- 状态变更 ---------- */
-function applyStateChanges(sc) {
+function applyStateChanges(sc, outcome) {
   const deltas = {};
   const notes = [];
   const acquired = {
@@ -5304,6 +5322,12 @@ function applyStateChanges(sc) {
     vehicle: null, buildings: []
   };
   if (!sc) sc = {};
+  // 底判成功：本回合不允许出现任何真实负面（伤害 / 感染 / 新增伤势），一律拦下
+  if (outcomeBaseSuccess(outcome)) {
+    if (typeof sc.hp === 'number' && sc.hp < 0) sc.hp = 0;
+    if (typeof sc.infection === 'number' && sc.infection > 0) sc.infection = 0;
+    if (Array.isArray(sc.addInjuries)) sc.addInjuries = [];
+  }
   const p = state.player;
 
   const applyNum = (raw, prop, max, deltaKey) => {
@@ -5744,7 +5768,7 @@ function buildPromptVars(timeCost = 0, successRate = 0, opts = {}) {
       ? `玩家正在使用【${(opts.treatment.meds || []).join('、') || '手边材料'}】处理${injuryPartLabel(opts.treatment.part)}的${opts.treatment.injury}。如果成功，请消耗对应药物并更新或移除该伤情。`
       : '无',
     outcome: opts.outcome
-      ? `${opts.outcome.label}（底判${outcomeBaseSuccess(opts.outcome) ? '成功' : '失败'} · 掷骰 ${opts.outcome.roll} / 成功率 ${opts.outcome.rate}%）`
+      ? `${opts.outcome.label}（底判${outcomeBaseSuccess(opts.outcome) ? '成功' : '失败'} · 掷骰 ${opts.outcome.roll} / 成功率 ${opts.outcome.rate}%${outcomeAmpText(opts.outcome)}）`
       : '无',
     outcomeGuidance: opts.outcome ? opts.outcome.guidance : '无',
     travelTarget: opts.travelTo || '无',
@@ -5922,7 +5946,7 @@ HP ${p.hp}/${p.hpMax} · 饥饿 ${p.hunger}/${p.hungerMax} · 口渴 ${p.thirst}
 丧尸图鉴：${state.bestiary.map(b => `${b.name}（威胁${b.threat}）`).join('、') || '尚未遭遇'}
 伤情：${state.injuries.map(i => `${injuryPartLabel(i.part)}：${i.injury}（${i.severity}${i.treated ? '，已处理' : ''}${i.needed && i.needed.length ? `，需要${i.needed.join('/')}` : ''}）`).join('；') || '无'}
 本回合治疗：${opts.treatment ? `正在使用【${(opts.treatment.meds || []).join('、') || '手边材料'}】处理${injuryPartLabel(opts.treatment.part)}的${opts.treatment.injury}` : '无'}
-本回合判定：${opts.outcome ? `${opts.outcome.label}（底判${outcomeBaseSuccess(opts.outcome) ? '成功' : '失败'} · 掷骰 ${opts.outcome.roll} / 成功率 ${opts.outcome.rate}%）。${opts.outcome.guidance}` : '无'}
+本回合判定：${opts.outcome ? `${opts.outcome.label}（底判${outcomeBaseSuccess(opts.outcome) ? '成功' : '失败'} · 掷骰 ${opts.outcome.roll} / 成功率 ${opts.outcome.rate}%${outcomeAmpText(opts.outcome)}）。${opts.outcome.guidance}` : '无'}
 本回合目标：前往 ${opts.travelTo || '无'}；联系 ${opts.contactName || '无'}
 
 规则：
@@ -5939,12 +5963,14 @@ HP ${p.hp}/${p.hpMax} · 饥饿 ${p.hunger}/${p.hungerMax} · 口渴 ${p.thirst}
 11. 高调行事更快但动静大，可能引来感染者和 NPC；低调更慢但隐蔽。本回合按该风格叙写。choices 的 timeCost 按正常步调估算，系统会自动乘行事风格系数，不要重复调整。
 12. 玩家受伤时写入 addInjuries：part 只能是 head / torso / leftArm / rightArm / leftLeg / rightLeg，并写清 injury、severity、bleeding、needed、effect。不同部位影响不同行动，系统会按部位扣成功率，叙事要体现具体不便。
 13. 治疗只在玩家确实使用正确药物时发生：用 removeItems 消耗药物，并用同名 addInjuries 更新 treated/severity，或用 removeInjuries 移除。没有药物不能凭空治愈。本轮治疗不是“无”时优先结算。
-14. 本回合判定已由系统两段掷骰决定，不得改写：先按成功率掷判定骰定成败，再掷命运骰（≤10 属大失败档，≥90 属大成功档）。
-    · 底判成功 + 命运骰≤10 → 小成功：目标达成但收益减少（少拿物资/情报、效果打折、多耗时间），绝对不得出现受伤、丢失已有物资、暴露行踪等负面效果。
-    · 底判成功 + 命运骰≥90 → 大成功：额外收益、发现或优势。
-    · 底判失败 + 命运骰≤10 → 大失败：真实负面后果，可以受伤、丢物资、被盯上；成功率低（<40）且行动高危时可以重伤、致命伤甚至死亡（hp 扣到 0）。
-    · 底判失败 + 命运骰≥90 → 小失败：目标没有达成，但侥幸避开额外代价。
-    · 其余为普通成功/失败。大失败且成功率高（>=75）时最多轻微擦伤/小损失/尴尬，不能重伤、致残或死亡。
+14. 本回合判定已由系统两段掷骰决定，不得改写：先按成功率掷判定骰定成败，再掷命运骰做增幅（≤10 是负面增幅档，≥90 是正面增幅档）。增幅只朝底判结果的方向生效：
+    · 底判成功 + 命运骰≥90 → 大成功：收益按 ×10 增幅（95 以上 ×100），基础 1 份变 10 或 100 份，物资数量、情报条数、时间节省、发现价值都要写进 stateChanges。
+    · 底判成功 + 命运骰≤10 → 小成功：目标达到但收益减半/按最低档，绝不产生伤害、感染、丢失已有物资或暴露行踪。
+    · 底判成功 + 其余 → 成功：正常结算。
+    · 底判失败 + 命运骰≤10 → 大失败：负面按 ×10 增幅（5 以下 ×100），基础 -1 变成 -10 或 -100（伤害、丢失数量、受伤范围都放大），可以重伤乃至死亡。
+    · 底判失败 + 命运骰≥90 → 小失败：代价压在最低档（如 -1），不放大。
+    · 其余 → 失败：正常代价。
+    大失败且成功率高（>=75）时实际后果封顶为轻微擦伤/小损失，不能重伤、致残或死亡。所有倍数必须体现在 stateChanges 数值与叙事里。
 15. HP 归零或感染度达到 100 即终局；饥饿或口渴归零后进入 3 回合衰竭倒计时，倒计时内进食/饮水可解除，归零同样终局。若判定允许死亡，用 hp 负值和致命伤表现，不要假死、强行救回或无代价复生。
 16. 每回合必须输出 summary：20~50 字的一句话剧情总结，不重复判定结果、不剧透后续，也不要直接复制 narration。
 17. 外貌与癖好在选出身时已设定，之后只随剧情与行动变化：受伤留疤、染血、换装、消瘦写 appearance（一句 60 字内的追加描述）；养成新习惯写 addHobbies（1~2 个短词）。不要每回合都改。
